@@ -73,3 +73,22 @@ printf '%s\n' 'abi <abi/4.0>,' 'include <tunables/global>' '' 'profile chrome-fo
 sudo apparmor_parser -r /etc/apparmor.d/chrome-for-testing
 ```
 Only needed for the automated tests; your normal Chrome already has its profile.
+
+## Two-laptop run with Gemma 4 (2026-10-18)
+
+Laptop A (Ubuntu): Chrome, the extension, the orchestrator and qwen3:14b. Laptop B (Windows, `10.86.173.192`): the worker
+and Gemma 4, set up with `setup_laptop_b.ps1`, over TLS wss.
+
+| Result | Detail |
+|---|---|
+| Task | **PASS**: 9 turns, 160 s, form filled and sent, outcome success |
+| Privacy | 0 real values in the server log; 7 masked screenshots sent, 0 withheld, 0 blocked |
+| Gemma 4 perceive | 31.5 s for the first job (model load on B), then 13.8 s |
+| Gemma 4 verify | **said yes, correctly**, for the Send click (10.5 s). Qwen2.5-VL 7B said "not visible" in 9 of 9 checks |
+| qwen3:14b decide | 11–21 s per step (prompts 1.1k–2.1k tokens) |
+
+The first perception, of the empty form, said the fields were "filled, indicated by solid black boxes". The prompt's
+"a box over a field means it is filled" made Gemma 4 read the empty input borders as boxes. It did no harm, because
+the decision follows the outline, but the perceive prompt should only mention boxes that are actually there.
+Gemma 4's verify answered correctly, so its "no" could block ref clicks again. One run is not enough evidence; decide
+after more runs.
