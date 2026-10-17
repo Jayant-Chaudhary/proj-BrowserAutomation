@@ -1,6 +1,6 @@
 # Server: orchestrator (Laptop A) and VLM worker (Laptop B)
 
-Full two-laptop setup: [`../docs/setup.md`](../docs/setup.md). Plain-English overview: [`../docs/how-it-works.md`](../docs/how-it-works.md). Per-file notes: [`../docs/files/`](../docs/files/README.md).
+**Two laptops:** `server/setup/setup_laptop_b.ps1` (Windows) and `server/setup/setup_laptop_a.sh` (Ubuntu); see [`../docs/setup.md`](../docs/setup.md). Plain-English overview: [`../docs/how-it-works.md`](../docs/how-it-works.md). Per-file notes: [`../docs/files/`](../docs/files/README.md).
 
 ## Install (both laptops)
 

@@ -5,3 +5,4 @@ websockets>=17
 pydantic>=2.14
 pillow>=13
 pytest>=9
+cryptography>=44

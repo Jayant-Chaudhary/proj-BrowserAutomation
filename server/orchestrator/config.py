@@ -11,6 +11,10 @@ def _bool(name: str, default: bool = False) -> bool:
     return os.environ.get(name, str(default)).lower() in {"1", "true", "yes"}
 
 
+def _read(path: str) -> str:
+    return Path(path).expanduser().read_text(encoding="utf-8-sig").strip() if path else ""
+
+
 @dataclass(frozen=True)
 class Settings:
     # The decider: qwen3:14b in Ollama on this laptop.
@@ -21,7 +25,8 @@ class Settings:
 
     # The VLM worker on Laptop B, over wss. Empty URL: run text-only.
     vlm_url: str = os.environ.get("VLM_URL", "")
-    vlm_token: str = os.environ.get("VLM_TOKEN", "")
+    # The token itself, or a file holding it (VLM_TOKEN_FILE), as copied from Laptop B.
+    vlm_token: str = os.environ.get("VLM_TOKEN", "") or _read(os.environ.get("VLM_TOKEN_FILE", ""))
     # The worker's certificate (or the mkcert root): the only certificate trusted for the link.
     vlm_ca_file: str = os.environ.get("VLM_CA_FILE", "")
     # ws:// without TLS, for a test on one machine only.

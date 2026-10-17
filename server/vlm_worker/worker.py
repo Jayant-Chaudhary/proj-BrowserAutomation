@@ -2,7 +2,8 @@
 jobs with the local VLM, one at a time (one GPU). It writes nothing to disk except timings in its log.
 
 Run:
-  VLM_TOKEN=... python -m vlm_worker.worker --cert cert.pem --key key.pem --port 8765
+  python -m vlm_worker.worker --cert cert.pem --key key.pem --token-file token --port 8765
+  (or VLM_TOKEN=... in place of --token-file; on Windows use vlm_worker/start_worker.ps1)
   (for a one-machine test without TLS: --insecure)
 """
 
@@ -82,8 +83,8 @@ def tls_context(cert: str, key: str) -> ssl.SSLContext:
     return ctx
 
 
-async def serve(host: str, port: int, ssl_ctx: ssl.SSLContext | None) -> None:
-    worker = Worker(os.environ.get("VLM_TOKEN", ""), VlmModel())
+async def serve(host: str, port: int, ssl_ctx: ssl.SSLContext | None, token: str) -> None:
+    worker = Worker(token, VlmModel())
     async with websockets.serve(worker.handle, host, port, ssl=ssl_ctx, max_size=MAX_MESSAGE_BYTES, ping_interval=20):
         log.info("VLM worker on %s://%s:%d with %s", "wss" if ssl_ctx else "ws", host, port, worker.model.name)
         await asyncio.Future()
@@ -96,10 +97,13 @@ def main() -> None:
     p.add_argument("--cert")
     p.add_argument("--key")
     p.add_argument("--insecure", action="store_true", help="ws:// without TLS, for one machine only")
+    p.add_argument("--token-file", help="file holding the shared token (else the VLM_TOKEN environment variable)")
     a = p.parse_args()
     if not a.insecure and not (a.cert and a.key):
         p.error("--cert and --key are required (or --insecure for a local test)")
-    asyncio.run(serve(a.host, a.port, None if a.insecure else tls_context(a.cert, a.key)))
+    # utf-8-sig: a token file saved by Windows Notepad may start with a byte-order mark.
+    token = open(a.token_file, encoding="utf-8-sig").read().strip() if a.token_file else os.environ.get("VLM_TOKEN", "")
+    asyncio.run(serve(a.host, a.port, None if a.insecure else tls_context(a.cert, a.key), token))
 
 
 if __name__ == "__main__":

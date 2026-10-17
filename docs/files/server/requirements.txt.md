@@ -7,3 +7,5 @@
 **Depends on.** —
 
 **Used by.** pip
+
+**Added.** `cryptography`, used by tools/make_worker_cert.py on Laptop B.

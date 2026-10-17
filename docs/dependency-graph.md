@@ -13,14 +13,14 @@ flowchart LR
     models["extension/models.ts<br/>createModel(fetch)"]
     pf["privacy/net-wrapper.ts<br/>redact · withhold · leak check"]
   end
-  subgraph A["Laptop A · server/orchestrator"]
+  subgraph A["Laptop A (Ubuntu) · server/orchestrator"]
     main["main.py<br/>/v1/chat/completions"]
     step["pipeline/step.py"]
     qwen[("qwen3:14b<br/>Ollama")]
   end
-  subgraph B["Laptop B · server/vlm_worker"]
+  subgraph B["Laptop B (Windows) · server/vlm_worker"]
     worker["worker.py (wss)"]
-    vl[("Qwen2.5-VL 7B<br/>Ollama")]
+    vl[("Gemma 4 (vision)<br/>Ollama, Windows")]
   end
   loop --> sess --> layer
   loop --> models --> pf -->|"HTTP, tags only"| main
@@ -97,6 +97,10 @@ flowchart TD
   fmt --> cmd
   link --> proto & cfg
   worker --> proto & vm
+  ps1["vlm_worker/start_worker.ps1"] --> worker
+  certpy["tools/make_worker_cert.py"] -. makes TLS files for .-> worker
+  setupb["setup/setup_laptop_b.ps1"] --> certpy & ps1
+  seta["setup/setup_laptop_a.sh"] -. writes laptop-a.env for .-> runa["run_orchestrator.sh"] --> main
   vm --> proto
   schema["contracts/command.schema.json"] -. generated from .-> cmd
 ```

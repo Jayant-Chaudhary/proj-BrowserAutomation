@@ -7,3 +7,5 @@
 **Depends on.** nothing
 
 **Used by.** almost every orchestrator file
+
+**Changed for the two-laptop setup.** VLM_TOKEN_FILE: the token can be read from the file copied from Laptop B.

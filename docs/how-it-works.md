@@ -8,7 +8,7 @@ Nanobrowser is a Chrome extension that lets an AI model use your browser. Normal
 (your name, your email, the screenshot) is sent to that model. We change two things. First, **the extension hides
 personal data before anything leaves the browser**: real values become placeholders such as `[[EMAIL_1]]`, and
 screenshots get the same values painted over. Second, **the model is our own server**, running on our own laptops: a
-text model (qwen3:14b) that decides what to do, helped by a vision model (Qwen2.5-VL) on a second laptop that looks
+text model (qwen3:14b) that decides what to do, helped by a vision model (Gemma 4) on a second, Windows laptop that looks
 at the masked screenshot. The real values come back only at the last moment, when the extension types them into the
 page.
 
@@ -18,7 +18,7 @@ page.
 |---|---|---|
 | Laptop A | Chrome with our Nanobrowser fork | the orchestrator, over `http://…:8000/v1` |
 | Laptop A | **orchestrator** (FastAPI) + **qwen3:14b** in Ollama | the VLM worker over **wss** |
-| Laptop B | **VLM worker** + **Qwen2.5-VL 7B** in Ollama | nothing else |
+| Laptop B (Windows) | **VLM worker** + **Gemma 4** (vision) in Ollama | nothing else |
 
 Nanobrowser is set up with an "OpenAI-compatible" provider whose address is the orchestrator. Nanobrowser doesn't
 know that the "model" is a pipeline.
