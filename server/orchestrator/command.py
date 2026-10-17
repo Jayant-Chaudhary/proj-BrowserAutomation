@@ -12,7 +12,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-Action = Literal["click", "type", "scroll", "ask_user", "done"]
+Action = Literal["navigate", "click", "type", "scroll", "ask_user", "done"]
 
 
 class Point(BaseModel):
@@ -22,6 +22,7 @@ class Point(BaseModel):
 
 class Command(BaseModel):
     action: Action
+    url: str | None = Field(default=None, description="navigate: the address to open, such as https://www.youtube.com")
     ref: str | None = Field(default=None, description="ref of the element from the page outline, such as e12")
     point: Point | None = Field(default=None, description="CSS pixels on the screenshot; only when no ref exists")
     value: str | None = Field(default=None, description="text to type; copy placeholders like [[NAME_1]] exactly")
@@ -37,7 +38,8 @@ def ollama_schema() -> dict:
     return {
         "type": "object",
         "properties": {
-            "action": {"type": "string", "enum": ["click", "type", "scroll", "ask_user", "done"]},
+            "action": {"type": "string", "enum": ["navigate", "click", "type", "scroll", "ask_user", "done"]},
+            "url": {"type": "string"},
             "ref": {"type": "string"},
             "point": {
                 "type": "object",

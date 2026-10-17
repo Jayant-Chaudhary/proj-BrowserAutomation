@@ -22,6 +22,7 @@
   "properties": {
     "action": {
       "enum": [
+        "navigate",
         "click",
         "type",
         "scroll",
@@ -30,6 +31,19 @@
       ],
       "title": "Action",
       "type": "string"
+    },
+    "url": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "navigate: the address to open, such as https://www.youtube.com",
+      "title": "Url"
     },
     "ref": {
       "anyOf": [

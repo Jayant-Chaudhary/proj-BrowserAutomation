@@ -63,9 +63,13 @@ class Turn:
 
     def needs_snapshot(self) -> bool:
         """No observation yet, or the last result says the page moved on from the refs we hold."""
+        last = self.last
+        # Never two snapshots in a row: a page that cannot be observed (a new tab, chrome://) goes to the model, which
+        # can navigate away, instead of looping.
+        if last is not None and last.name == "snapshot":
+            return False
         if self.snapshot_at < 0:
             return True
-        last = self.last
         if last is None:
             return False
         if last.name in ("navigate", "ask_user") and self.snapshot_at < len(self.steps) - 1:

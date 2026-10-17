@@ -7,3 +7,5 @@
 **Depends on.** command.py
 
 **Used by.** main.py
+
+**Changed after the first use from Chrome.** `navigate` → Nanobrowser's `navigate {url}`.

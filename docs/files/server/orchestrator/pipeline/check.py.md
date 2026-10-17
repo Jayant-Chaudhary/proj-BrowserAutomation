@@ -9,3 +9,5 @@
 **Used by.** pipeline/step.py
 
 **Changed after the E2E runs.** Refuses a risky click while a placeholder from the task has not been typed (`untyped_task_tags`).
+
+**Changed after the first use from Chrome.** `navigate`: a bare host gets https://, and any scheme other than http/https (javascript:, file:, chrome:) is refused.

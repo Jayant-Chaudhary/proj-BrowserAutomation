@@ -160,3 +160,15 @@ def test_filled_fields_and_snapshot_after_ask_user():
     assert turn.filled_since_snapshot() == {"e3": "[[EMAIL_1]]"}
     assert "- e3 = [[EMAIL_1]]" in decide_messages(turn, None, [], 5000)[1]["content"]
     assert parse(agent_body([("snapshot", {}, OUTLINE), ("ask_user", {}, "answer: yes")])).needs_snapshot()
+
+
+def test_navigate_and_no_snapshot_loop():
+    blank = parse(agent_body([("snapshot", {}, "error NOT_OBSERVABLE: the tab is not a regular web page")],
+                             task="open youtube.com"))
+    assert not blank.needs_snapshot()
+    c = check({"action": "navigate", "url": "youtube.com", "reason": "r"}, blank)
+    assert c.command and c.command.url == "https://youtube.com"
+    assert formatter.to_tool_call(c.command) == ("navigate", {"url": "https://youtube.com", "intent": "r"})
+    assert check({"action": "navigate", "url": "javascript:alert(1)", "reason": "r"}, blank).problems
+    after = parse(agent_body([("snapshot", {}, "error"), ("navigate", {"url": "https://youtube.com"}, "ok")]))
+    assert after.needs_snapshot()

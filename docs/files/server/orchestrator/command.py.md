@@ -7,3 +7,5 @@
 **Depends on.** pydantic
 
 **Used by.** text_model.py, pipeline/check.py, formatter.py, main.py
+
+**Changed after the first use from Chrome.** New action `navigate` with `url` (the first version could not open a site: "open youtube.com" failed).

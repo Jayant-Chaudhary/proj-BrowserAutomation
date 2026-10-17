@@ -71,6 +71,23 @@ def check(raw: dict, turn: Turn) -> Checked:
             bent = NEAR_MISS.search(TAG.sub("", cmd.value))
             if bent:
                 problems.append(f'"{bent.group(0)}" is a changed placeholder. Copy placeholders exactly, like [[NAME_1]].')
+    if cmd.action == "navigate":
+        url = (cmd.url or "").strip()
+        if not url:
+            problems.append("navigate needs a url.")
+        else:
+            # A bare host ("youtube.com") gets https://; other schemes (javascript:, file:, chrome:) are refused.
+            scheme = re.match(r"([a-z][a-z0-9+.-]*):(?!\d)", url, re.I)
+            if scheme and scheme.group(1).lower() not in ("http", "https"):
+                problems.append(f'"{cmd.url}" is not a web address. Only http and https pages can be opened.')
+            elif "://" not in url:
+                url = "https://" + url
+            if not re.match(r"https?://[^\s/$.?#][^\s]*$", url, re.I):
+                problems.append(f'"{cmd.url}" is not a web address. Give a full https:// address.')
+            cmd.url = url
+            bent = NEAR_MISS.search(TAG.sub("", url))
+            if bent:
+                problems.append(f'"{bent.group(0)}" is a changed placeholder. Copy placeholders exactly, like [[NAME_1]].')
     if cmd.action == "ask_user" and not cmd.message:
         problems.append("ask_user needs a message.")
     if cmd.action == "done" and (not cmd.outcome or not cmd.summary):

@@ -58,7 +58,7 @@ know that the "model" is a pipeline.
    - Build a **short** prompt for qwen3:14b, including a list of the fields it has already filled: the task, the screen description, the outline, the last few results,
      and any reasons earlier answers were rejected. Nanobrowser's 19 tool definitions (about 9k tokens) are not
      included.
-   - qwen3:14b answers with one small JSON command, for example `{"action":"type","ref":"e3","value":"[[EMAIL_1]]"}`.
+   - qwen3:14b answers with one small JSON command (navigate, click, type, scroll, ask_user, done), for example `{"action":"type","ref":"e3","value":"[[EMAIL_1]]"}`.
      Ollama forces the answer into that shape, so we don't rely on the model's own tool-calling.
    - **Check** the command: the ref must exist on the page, and every placeholder must be one the browser actually
      sent. A changed placeholder such as `[EMAIL_1]` is rejected.
