@@ -65,3 +65,11 @@ the message text and buttons stay readable. The layer reuses its own `blankBoxes
 **Open finding:** Qwen2.5-VL 7B is not a reliable verifier on this page: it said "not visible" for a visible, labelled
 button in every verify job. Try a different verify prompt (ask it to read the label text first) or a larger VLM on
 Laptop B before relying on it for anything blocking.
+
+**Chrome for Testing on Ubuntu (AppArmor).** It crashes with `No usable sandbox!` until it has a profile like Ubuntu's
+own for Chrome:
+```
+printf '%s\n' 'abi <abi/4.0>,' 'include <tunables/global>' '' 'profile chrome-for-testing /home/<user>/.cache/puppeteer/chrome/*/chrome-linux64/chrome flags=(unconfined) {' '  userns,' '  include if exists <local/chrome-for-testing>' '}' | sudo tee /etc/apparmor.d/chrome-for-testing
+sudo apparmor_parser -r /etc/apparmor.d/chrome-for-testing
+```
+Only needed for the automated tests; your normal Chrome already has its profile.

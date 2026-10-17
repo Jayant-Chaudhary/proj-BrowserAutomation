@@ -188,7 +188,8 @@ curl localhost:8000/health
 # {"ok":true,"text_model":"qwen3:14b","vlm":"qwen2.5vl:7b"}     <- "vlm": null means the link is down
 ```
 
-Optional settings: `TEXT_MODEL`, `TEXT_NUM_CTX` (16384), `VLM_TIMEOUT_S` (10), `MAX_RETRIES` (2), `SNAPSHOT_CHARS`,
+Add `LOG_IMAGES=1` to save every (masked) screenshot the server receives to `server/logs/images/`: useful for the
+demo. Optional settings: `TEXT_MODEL`, `TEXT_NUM_CTX` (16384), `VLM_TIMEOUT_S` (10), `MAX_RETRIES` (2), `SNAPSHOT_CHARS`,
 and `LOG_DIR`.
 
 ### 2.5 Point Nanobrowser at the orchestrator
@@ -230,8 +231,12 @@ chrome.storage.local.set({ privacyRules: [
    ```bash
    cd ~/Code/harness/client
    NB_LIVE=1 corepack pnpm autorun eval --args '{"kind":"openai-compatible","model":"privacy-agent",
-     "baseUrl":"http://localhost:8000/v1","tasks":["privacy-contact"],"modes":["auto"],"privacy":true,"vision":true}'
+     "baseUrl":"http://localhost:8000/v1","tasks":["privacy-contact"],"modes":["auto"],"privacy":true,"vision":true,
+     "runTimeoutS":900}'
+   python3 ~/Code/harness/server/tests/e2e_report.py      # PASS/FAIL, and a scan of the server log for real values
    ```
+   On Ubuntu 23.10+ Chrome for Testing needs an AppArmor profile first (`No usable sandbox!`); see
+   `phase0-findings.md` → the two commands used on 2026-10-18.
 
 ## 4. Troubleshooting
 
