@@ -9,3 +9,5 @@
 **Used by.** pipeline/step.py
 
 **Changed after the E2E runs.** Adds "FIELDS YOU ALREADY FILLED AFTER THE OUTLINE".
+
+**Changed after the first use from Chrome.** Shows CURRENT REQUEST, EARLIER REQUESTS and THE ACTIVE TAB in place of the whole chat as one task.

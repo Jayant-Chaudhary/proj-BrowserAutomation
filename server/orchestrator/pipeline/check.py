@@ -5,6 +5,7 @@ The extension checks again on its own side; this check only saves a round trip t
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 
@@ -88,6 +89,9 @@ def check(raw: dict, turn: Turn) -> Checked:
             bent = NEAR_MISS.search(TAG.sub("", url))
             if bent:
                 problems.append(f'"{bent.group(0)}" is a changed placeholder. Copy placeholders exactly, like [[NAME_1]].')
+    repeat = repeated(cmd, turn)
+    if repeat:
+        problems.append(repeat)
     if cmd.action == "ask_user" and not cmd.message:
         problems.append("ask_user needs a message.")
     if cmd.action == "done" and (not cmd.outcome or not cmd.summary):
@@ -120,3 +124,30 @@ def untyped_task_tags(turn: Turn) -> list[str]:
         if tag not in typed and tag not in seen:
             seen.append(tag)
     return seen
+
+
+def _same_url(a: str, b: str) -> bool:
+    norm = lambda u: re.sub(r"^https?://(www\.)?", "", u.strip().lower()).rstrip("/")  # noqa: E731
+    return bool(a and b) and norm(a) == norm(b)
+
+
+def repeated(cmd: Command, turn: Turn) -> str | None:
+    """A note when the command only repeats what is already done: the page it would open is open, or the last action
+    was this same navigate or the same value into the same field (the cause of the six-navigate loop on Google Forms)."""
+    if cmd.action == "navigate" and cmd.url and _same_url(cmd.url, turn.active_url):
+        return (f"{cmd.url} is already the active tab. If that is what the request asked for, answer done; "
+                "otherwise act on the page.")
+    last = turn.last_action()
+    if last is None:
+        return None
+    try:
+        args = json.loads(last.args or "{}")
+    except json.JSONDecodeError:
+        return None
+    if cmd.action == "navigate" and last.name == "navigate" and _same_url(cmd.url or "", args.get("url", "")):
+        return "You just opened this same address and the page is the result. Answer done, or act on the page."
+    if cmd.action == "type" and last.name in ("set", "type"):
+        target = args.get("target") if isinstance(args.get("target"), dict) else {}
+        if target.get("ref") == cmd.ref and args.get("value", args.get("text")) == cmd.value and not last.result.startswith("error"):
+            return f"You just put this value into {cmd.ref}. Move to the next field, or answer done."
+    return None

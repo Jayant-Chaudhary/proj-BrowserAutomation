@@ -7,3 +7,5 @@
 **Depends on.** turn.py, pipeline/step.py, text_model.py, formatter.py, vlm_link.py, request_log.py, config.py
 
 **Used by.** uvicorn
+
+**Changed after the first use from Chrome.** `/v1/models` declares `input_modalities: [text, image]` and `context_length`, so Nanobrowser offers the screenshot tool without a separate Test; the log records the tools offered and whether `screenshot` is one.

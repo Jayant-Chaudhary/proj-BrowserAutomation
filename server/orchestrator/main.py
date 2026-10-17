@@ -60,7 +60,21 @@ async def health(request: Request):
 
 @app.get("/v1/models")
 async def models():
-    return {"object": "list", "data": [{"id": formatter.MODEL_ID, "object": "model", "owned_by": "local"}]}
+    # The fields Nanobrowser reads from a model list (src/llm/model-info.ts): with image input declared it offers the
+    # `screenshot` tool, which the pipeline needs for the vision model; the window matches the orchestrator's prompt size.
+    return {
+        "object": "list",
+        "data": [
+            {
+                "id": formatter.MODEL_ID,
+                "object": "model",
+                "owned_by": "local",
+                "input_modalities": ["text", "image"],
+                "context_length": settings.num_ctx,
+                "max_tokens": 4096,
+            }
+        ],
+    }
 
 
 @app.post("/v1/chat/completions")
@@ -73,6 +87,10 @@ async def chat_completions(request: Request):
         "kind": turn.kind,
         "redaction": request.headers.get("x-redaction-scheme"),
         "task": turn.task[:300],
+        "earlier_requests": [r[:120] for r in turn.earlier_requests],
+        "active_url": turn.active_url,
+        "tools": len(turn.tools),
+        "screenshot_offered": turn.can_screenshot,
         "steps": len(turn.steps),
         "image": turn.image_b64 is not None,
         "tags_seen": sorted(turn.known_tags),

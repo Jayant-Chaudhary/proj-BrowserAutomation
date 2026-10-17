@@ -172,3 +172,27 @@ def test_navigate_and_no_snapshot_loop():
     assert check({"action": "navigate", "url": "javascript:alert(1)", "reason": "r"}, blank).problems
     after = parse(agent_body([("snapshot", {}, "error"), ("navigate", {"url": "https://youtube.com"}, "ok")]))
     assert after.needs_snapshot()
+
+
+def test_several_requests_in_one_chat_and_repeat_guard():
+    body = agent_body([("navigate", {"url": "https://docs.google.com/forms/u/0/"}, "ok"),
+                       ("snapshot", {}, OUTLINE)], task="open youtube.com")
+    body["messages"][1]["content"] += [
+        {"type": "text", "text": "open google form website"},
+        {"type": "text", "text": "snapshot · tab 1 · rev 1 · 69 refs\n<<<page-content>>>"},
+        {"type": "text", "text": "<browser-state>\nactive tab: [1] «Forms» «https://docs.google.com/forms/u/0/»\n</browser-state>"},
+    ]
+    turn = parse(body)
+    assert turn.task == "open google form website" and turn.earlier_requests == ["open youtube.com"]
+    assert turn.active_url == "https://docs.google.com/forms/u/0/"
+    again = check({"action": "navigate", "url": "https://docs.google.com/forms/u/0/", "reason": "r"}, turn)
+    assert again.command is None and "already the active tab" in again.problems[0]
+    from orchestrator.prompt import decide_messages
+    text = decide_messages(turn, None, [], 5000)[1]["content"]
+    assert "CURRENT REQUEST (work only on this):\nopen google form website" in text and "EARLIER REQUESTS" in text
+
+
+def test_models_endpoint_declares_vision(client):
+    c, _ = client
+    m = c.get("/v1/models").json()["data"][0]
+    assert m["id"] == "privacy-agent" and "image" in m["input_modalities"] and m["context_length"] > 0

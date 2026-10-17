@@ -41,6 +41,11 @@ class Turn:
     task: str = ""
     browser_state: str = ""
     user_notes: list[str] = field(default_factory=list)
+    # The user's requests in order. One chat holds several ("open youtube.com", then "open google form website"); the
+    # last is the one to work on now, the earlier ones were handled before.
+    requests: list[str] = field(default_factory=list)
+    # The active tab's address, from <browser-state>.
+    active_url: str = ""
     steps: list[Step] = field(default_factory=list)
     snapshot: str = ""
     # Index in `steps` of the latest snapshot; -1 when there is none.
@@ -106,6 +111,17 @@ class Turn:
                 filled[ref] = value
         return filled
 
+    @property
+    def earlier_requests(self) -> list[str]:
+        return self.requests[:-1]
+
+    def last_action(self) -> Step | None:
+        """The newest step that acted on the page (not an observation)."""
+        for step in reversed(self.steps):
+            if step.name not in ("snapshot", "screenshot", "find", "read", "wait"):
+                return step
+        return None
+
     def refused_tag(self) -> str | None:
         """The placeholder the extension refused in the last call, if it refused one."""
         last = self.last
@@ -131,6 +147,26 @@ def _images(content: Any) -> list[str]:
                 url = (p.get("image_url") or {}).get("url", "")
                 if url.startswith("data:image/"):
                     out.append(url.split(",", 1)[1])
+    return out
+
+
+# Text parts of a user message that are not a request the user typed: the extension's notes, page content, outlines.
+NOT_A_REQUEST = re.compile(
+    r"^(?:snapshot · |\[Nanobrowser note|<|The following image|The text between|files attached|\[screenshot withheld)"
+)
+ACTIVE_URL = re.compile(r"active tab: \[\d+\] «[^»]*» «([^»]*)»")
+
+
+def _request_parts(content: Any) -> list[str]:
+    """The parts of a user message that are requests the user typed."""
+    parts = [content] if isinstance(content, str) else [
+        p.get("text", "") for p in content or [] if isinstance(p, dict) and p.get("type") == "text"
+    ]
+    out = []
+    for part in parts:
+        text = BROWSER_STATE.sub("", part).strip()
+        if text and not NOT_A_REQUEST.match(text) and len(text) < 4000:
+            out.append(text)
     return out
 
 
@@ -168,6 +204,7 @@ def parse(body: dict) -> Turn:
             images = _images(content)
             if images:
                 turn.image_b64 = images[-1]
+            turn.requests.extend(_request_parts(content))
             if first_user and plain:
                 turn.task = plain
                 first_user = False
@@ -199,6 +236,12 @@ def parse(body: dict) -> Turn:
         turn.known_tags.update(TAG.findall(_text(m.get("content"))))
         for call in m.get("tool_calls") or []:
             turn.known_tags.update(TAG.findall((call.get("function") or {}).get("arguments", "")))
+    # The current request is the task from here on; the first user message can hold the whole chat run together.
+    if turn.requests:
+        turn.task = turn.requests[-1]
+    url = ACTIVE_URL.search(turn.browser_state)
+    if url:
+        turn.active_url = url.group(1)
     if kind == "chat":
         turn.chat_prompt = "\n\n".join(_text(m.get("content")) for m in messages if m.get("role") != "system")
     return turn

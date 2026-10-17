@@ -22,9 +22,15 @@ def _trim(text: str, limit: int) -> str:
 
 
 def decide_messages(turn: Turn, perception: dict | None, notes: list[str], snapshot_chars: int) -> list[dict]:
-    parts = [f"TASK:\n{turn.task}"]
-    if turn.user_notes:
-        parts.append("MESSAGES FROM THE USER SINCE:\n" + "\n".join(f"- {n}" for n in turn.user_notes[-3:]))
+    parts = []
+    if turn.earlier_requests:
+        parts.append(
+            "EARLIER REQUESTS (already handled; do not redo them):\n"
+            + "\n".join(f"- {r}" for r in turn.earlier_requests[-4:])
+        )
+    parts.append(f"CURRENT REQUEST (work only on this):\n{turn.task}")
+    if turn.active_url:
+        parts.append(f"THE ACTIVE TAB IS: {turn.active_url}")
     if turn.browser_state:
         parts.append(turn.browser_state)
     if perception:

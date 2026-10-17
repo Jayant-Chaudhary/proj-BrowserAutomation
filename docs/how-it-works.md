@@ -20,7 +20,8 @@ page.
 | Laptop A | **orchestrator** (FastAPI) + **qwen3:14b** in Ollama | the VLM worker over **wss** |
 | Laptop B (Windows) | **VLM worker** + **Gemma 4** (vision) in Ollama | nothing else |
 
-Nanobrowser is set up with an "OpenAI-compatible" provider whose address is the orchestrator. Nanobrowser doesn't
+Nanobrowser is set up with an "OpenAI-compatible" provider whose address is the orchestrator. Its model list says the
+model takes images, so Nanobrowser offers the `screenshot` tool that the vision step needs. Nanobrowser doesn't
 know that the "model" is a pipeline.
 
 ## One step, from the page to the click
@@ -55,12 +56,13 @@ know that the "model" is a pipeline.
      type, any popup, visible errors, the fields it can see. If Laptop B doesn't answer within 10 seconds, continue
      without the description.
    - The vision model only runs on a screenshot taken just now. Each call costs about 10 seconds.
-   - Build a **short** prompt for qwen3:14b, including a list of the fields it has already filled: the task, the screen description, the outline, the last few results,
+   - Build a **short** prompt for qwen3:14b: the **current request** (the last thing you asked in the chat; earlier
+     requests are listed as already handled), the active tab, and a list of the fields it has already filled: the task, the screen description, the outline, the last few results,
      and any reasons earlier answers were rejected. Nanobrowser's 19 tool definitions (about 9k tokens) are not
      included.
    - qwen3:14b answers with one small JSON command (navigate, click, type, scroll, ask_user, done), for example `{"action":"type","ref":"e3","value":"[[EMAIL_1]]"}`.
      Ollama forces the answer into that shape, so we don't rely on the model's own tool-calling.
-   - **Check** the command: the ref must exist on the page, and every placeholder must be one the browser actually
+   - **Check** the command. It must not repeat itself, for example by navigating to the page that is already open. the ref must exist on the page, and every placeholder must be one the browser actually
      sent. A changed placeholder such as `[EMAIL_1]` is rejected.
    - A risky click (Submit, Pay, Delete, Send…) is refused while any placeholder from the task has not been typed.
    - Before a risky click, take a fresh screenshot and ask the vision model to **verify** the click. For a click by

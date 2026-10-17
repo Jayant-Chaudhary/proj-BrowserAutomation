@@ -11,3 +11,5 @@
 **Changed after the E2E runs.** Tracks the latest screenshot (`screenshot_at`), asks for a snapshot after `ask_user`, and lists fields filled since the outline (`filled_since_snapshot`).
 
 **Changed after the first use from Chrome.** Never asks for two snapshots in a row: a page that cannot be observed (a new tab) goes to the model, which can navigate away.
+
+**Changed after the first use from Chrome.** Splits the chat into the user's requests (`requests`); the last one is the current task, the earlier ones are shown as already handled. Reads the active tab's address (`active_url`).
