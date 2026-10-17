@@ -1,0 +1,67 @@
+# Phase 0 findings (from the fork's source and real runs)
+
+Fork: `https://github.com/nanobrowser/nanobrowser.git`, commit `f1e912d`, cloned into `client/`. Our work is on
+branch `privacy-layer`.
+
+## Hook points, confirmed in the source
+
+| Hook | Where | What we did |
+|---|---|---|
+| (a) model client fetch | `client/src/extension/models.ts`: `createModel(spec, { fetch })` (`src/llm/providers.ts` already accepts a custom fetch) | pass `privacyFetch(...)` |
+| (b) screenshot capture | `client/src/browser-control/core/tools/observe.ts`: `screenshot()` takes a raw `Page.captureScreenshot` and already paints over secrets with `blankBoxes` (fails closed) | added `SessionConfig.imagePrivacy` to hide personal nodes too and register the final image |
+| (c) tool dispatch | `client/src/extension/agent-session.ts`: `layerPort.call`, which every layer tool goes through | swap tags for real values here |
+| (d) resize / re-encode | none: the PNG base64 goes from `screenshot` to `agent/loop.ts` (`#screenshotImage`) to `agent/context.ts` to the AI SDK unchanged | exact fingerprint in `image-registry.ts` (option "no re-encode") |
+
+## What the fork already does, which we reuse
+
+- **One agent, 19 tools.** There are no Planner, Navigator or Validator stages (see `AGENTS.md`: "One agent… No model
+  tiers"). The `screenshot` tool is offered only to models marked as vision models.
+- **Secrets are already masked** in text and images: password fields, card numbers, one-time codes
+  (`core/perception/masking.ts`, `core/redact.ts`). Our layer adds names, emails, phones, addresses and IDs as
+  placeholders.
+- **Consequential actions need a person.** Submit, pay and delete are confirmed in Ask mode, and payments and secrets
+  are always handed to the user. We do not duplicate this. The server only adds a VLM check before risky clicks.
+- **Provider test.** Nanobrowser sends one `report_status` tool request, then reasoning probes, then an image probe.
+  The orchestrator answers all of them (`turn.classify`).
+- **Only the newest image is kept** in the history (`agent/context.ts`). Old screenshots are not re-sent.
+
+## qwen3:14b measured on this laptop (RTX 5050 Laptop, 8 GB)
+
+`server/tests/smoke_text_model.py`, compact prompt (~420–450 tokens), `num_ctx 16384`, `think: false`, `format` schema:
+
+| Measure | Result |
+|---|---|
+| warm seconds per step | 8.4 s (first run), 13.1 s (second run) |
+| first call (model load) | 13.6–18.9 s |
+| valid commands | 8 / 8 |
+| memory | Ollama loads 12 GB at 16k context: **51% CPU / 49% GPU**, so it doesn't fit in 8 GB |
+| bug found | the model copies the outline's `«…»` quotes into values (`«[[EMAIL_1]]»`). The check now strips them; the prompt rule alone did not stop it |
+
+Next measurements to take:
+- `TEXT_NUM_CTX=8192` (the compact prompt is small, so 8k may be enough and could fit more of the model on the GPU)
+- a smaller quant
+- a real Google Form run through the extension, for prompt size with a real snapshot
+
+No decision on model tiers is made until those numbers exist.
+
+## End-to-end runs (2026-10-18, one laptop, Chrome for Testing)
+
+The real agent loop, layer and privacy fetch in Chrome → orchestrator → qwen3:14b, with Qwen2.5-VL 7B over TLS wss
+(on the same machine). Task `privacy-contact`: fill a fake contact form (name, email, phone given in the task text), then
+send it. Reproduce with `docs/setup.md` §3.5, then `python3 server/tests/e2e_report.py`.
+
+| Run | Mode | Result | Real values in server log | What it taught us → fix |
+|---|---|---|---|---|
+| 1 | text | blocked at the end | 0 | The page echoed the submitted form URL-encoded (`jane.doe%40example.com`, `Jane+Doe`): neither the redactor nor the leak check knew encoded forms. The request was blocked only because a late tag tripped the leak check → encoded forms matched, detectors run on decoded text, redaction repeats until no new tag |
+| 2 | text | task FAIL | 0 | qwen3:14b skipped the phone and submitted → the server refuses a submit while a task placeholder is untyped |
+| 3 | text | **PASS**, 7 turns, 73 s | 0 | 9–12 s per decision, prompts 0.9k–2k tokens |
+| 4 | vision | task FAIL (time) | 0 | The server never asked for a screenshot → it now requests one per new outline and a fresh one before a risky click |
+| 5 | vision | task FAIL | 0 | The VLM called masked fields "empty", so qwen3:14b re-filled them; the VLM said a clearly visible button was "not visible" (9 of 9 verify jobs) → labelled screenshots, "a covered field is filled" in the prompts, a "fields you already filled" list, snapshot after ask_user, VLM verify advisory for ref clicks (blocking for point clicks) |
+| 6 | vision | **PASS**, 9 turns, 143 s | 0 | perceive 10–12 s, verify ~9 s per job over wss |
+
+Masked screenshots received by the server (with `LOG_IMAGES=1`) show name, email and phone as solid grey boxes, while
+the message text and buttons stay readable. The layer reuses its own `blankBoxes` (grey, no tag text in the box).
+
+**Open finding:** Qwen2.5-VL 7B is not a reliable verifier on this page: it said "not visible" for a visible, labelled
+button in every verify job. Try a different verify prompt (ask it to read the label text first) or a larger VLM on
+Laptop B before relying on it for anything blocking.

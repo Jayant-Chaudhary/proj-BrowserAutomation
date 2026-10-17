@@ -1,0 +1,59 @@
+"""The command qwen3:14b answers with: one small JSON object, never a native tool call.
+
+The JSON schema below is handed to Ollama as `format`, so the model's output is constrained to it. formatter.py turns a
+checked command into the OpenAI tool call Nanobrowser expects. contracts/command.schema.json is generated from this
+file (see `python -m orchestrator.command`).
+"""
+
+from __future__ import annotations
+
+import json
+from typing import Literal
+
+from pydantic import BaseModel, Field
+
+Action = Literal["click", "type", "scroll", "ask_user", "done"]
+
+
+class Point(BaseModel):
+    x: float
+    y: float
+
+
+class Command(BaseModel):
+    action: Action
+    ref: str | None = Field(default=None, description="ref of the element from the page outline, such as e12")
+    point: Point | None = Field(default=None, description="CSS pixels on the screenshot; only when no ref exists")
+    value: str | None = Field(default=None, description="text to type; copy placeholders like [[NAME_1]] exactly")
+    direction: Literal["up", "down"] | None = None
+    message: str | None = Field(default=None, description="ask_user: the question for the user")
+    outcome: Literal["success", "partial", "failed"] | None = None
+    summary: str | None = Field(default=None, description="done: the answer for the user")
+    reason: str = Field(description="one short sentence: why this action")
+
+
+def ollama_schema() -> dict:
+    """The schema in the plain form llama.cpp's grammar converter handles: only action and reason are required."""
+    return {
+        "type": "object",
+        "properties": {
+            "action": {"type": "string", "enum": ["click", "type", "scroll", "ask_user", "done"]},
+            "ref": {"type": "string"},
+            "point": {
+                "type": "object",
+                "properties": {"x": {"type": "number"}, "y": {"type": "number"}},
+                "required": ["x", "y"],
+            },
+            "value": {"type": "string"},
+            "direction": {"type": "string", "enum": ["up", "down"]},
+            "message": {"type": "string"},
+            "outcome": {"type": "string", "enum": ["success", "partial", "failed"]},
+            "summary": {"type": "string"},
+            "reason": {"type": "string"},
+        },
+        "required": ["action", "reason"],
+    }
+
+
+if __name__ == "__main__":
+    print(json.dumps(Command.model_json_schema(), indent=2))
