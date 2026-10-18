@@ -227,3 +227,12 @@ def test_perceive_only_on_thin_outlines():
     thin = parse(agent_body([("snapshot", {}, "[e1] heading «Canvas app»")]))
     s = Settings()
     assert not wants_perception(rich, s) and wants_perception(thin, s)
+
+
+def test_refs_with_longer_epoch_prefixes():
+    # A real Google Forms run: the model chose "bl90" (the Blank form button) and the old pattern ([a-z]\d+) rejected it.
+    outline = "[bl88] heading «Start a new form»\n[bl90] button «Blank form»\n[ABCDEFGHIJKL7] link «Help»"
+    turn = parse(agent_body([("snapshot", {}, outline)]))
+    assert turn.known_refs == {"bl88", "bl90", "ABCDEFGHIJKL7"}
+    c = check({"action": "click", "ref": "bl90", "reason": "r"}, turn)
+    assert c.command is not None and "Blank form" in c.element

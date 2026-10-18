@@ -13,3 +13,5 @@
 **Changed after the first use from Chrome.** Never asks for two snapshots in a row: a page that cannot be observed (a new tab) goes to the model, which can navigate away.
 
 **Changed after the first use from Chrome.** Splits the chat into the user's requests (`requests`); the last one is the current task, the earlier ones are shown as already handled. Reads the active tab's address (`active_url`).
+
+**Fixed (2026-10-18).** `REF` accepts multi-letter epoch prefixes (`bl90`) and the 12-uppercase fallback. With the old one-letter pattern, every ref on a page looked invalid once the prefix grew past `z` (after extension reloads), so correct clicks were rejected and the VLM description ran on every page.

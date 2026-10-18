@@ -17,7 +17,9 @@ from typing import Any, Literal
 
 Kind = Literal["probe", "done_only", "chat", "agent"]
 
-REF = re.compile(r"\[([a-z]\d+)\]")
+# A ref is the layer's epoch prefix plus a counter (client/src/browser-control/core/refs.ts): one or more lowercase
+# letters that grow with each extension restart (a, z, aa, bl, ...), or 12 uppercase letters when storage failed.
+REF = re.compile(r"\[([a-z]+\d+|[A-Z]{12}\d+)\]")
 TAG = re.compile(r"\[\[[A-Z]+_\d+\]\]")
 BROWSER_STATE = re.compile(r"<browser-state>.*?</browser-state>", re.S)
 SCREENSHOT_LINE = re.compile(r"screenshot · tab \d+ · (\d+)×(\d+) px · scale ([\d.]+)")
