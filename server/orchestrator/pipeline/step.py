@@ -18,7 +18,7 @@ from ..command import Command
 from ..config import Settings
 from ..prompt import decide_messages
 from ..text_model import TextModel, TextModelError
-from ..turn import Turn
+from ..turn import REF, Turn
 from ..vlm_link import VlmLink
 from .check import check
 from .verify import verify
@@ -50,6 +50,15 @@ class StepResult:
     timings: dict = field(default_factory=dict)
 
 
+def wants_perception(turn: Turn, settings: Settings) -> bool:
+    """Whether the VLM should describe the fresh screenshot (see Settings.perceive)."""
+    if settings.perceive == "never":
+        return False
+    if settings.perceive == "always":
+        return True
+    return len(REF.findall(turn.snapshot)) < settings.perceive_min_refs
+
+
 def ask(message: str, reason: str) -> Command:
     return Command(action="ask_user", message=message, reason=reason)
 
@@ -76,7 +85,7 @@ async def run_step(turn: Turn, text: TextModel, link: VlmLink, settings: Setting
         return out
 
     # Perceive only a screenshot taken just now: an older one was already described, and each VLM call costs seconds.
-    if turn.image_b64 and link.connected and turn.screenshot_at == len(turn.steps) - 1:
+    if turn.image_b64 and link.connected and turn.screenshot_at == len(turn.steps) - 1 and wants_perception(turn, settings):
         started = time.monotonic()
         reply = await link.run("perceive", PERCEIVE_PROMPT, turn.image_b64)
         out.timings["perceive_ms"] = int((time.monotonic() - started) * 1000)

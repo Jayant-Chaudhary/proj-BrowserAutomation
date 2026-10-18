@@ -92,3 +92,26 @@ The first perception, of the empty form, said the fields were "filled, indicated
 the decision follows the outline, but the perceive prompt should only mention boxes that are actually there.
 Gemma 4's verify answered correctly, so its "no" could block ref clicks again. One run is not enough evidence; decide
 after more runs.
+
+## First real use from Chrome: why a Google Forms run stopped (2026-10-18)
+
+Task: "open google form website and make a blank google form having field name and type short answer". The run
+stopped after clicking "Blank form": the server answered every request, but Chrome sent no new one.
+
+| Measure | Value |
+|---|---|
+| Gemma 4 perceive (Laptop B) | 37 s |
+| qwen3:14b decide, 16k context | 54-60 s in the run, 113.8 s in a re-measure (load average ~7) |
+| qwen3:14b decide, 8k context | **8 s** warm (46%/54% CPU/GPU instead of 55%/45%) |
+| Prompt size | 1.7-1.9k tokens |
+
+**Cause:** Chrome stops an extension service worker when a fetch response takes more than 30 s to arrive. The server
+sent nothing until the step was decided, 60-90 s later.
+
+**Fix:** streamed replies start at once, with a heartbeat every 5 s; 8k context; the VLM describes a screenshot only
+when the outline is thin.
+
+**Not the cause:** conversation memory. Each request is about 2k tokens, because the server builds its own short
+prompt. A client-side vector DB would not help here; it could later serve "recipe memory" (how a site was done
+before). The real limit is that qwen3:14b doesn't fit in 8 GB of VRAM. The option is qwen3:8b on Laptop A: it fits
+whole and is several times faster, but it needs its own validity test.

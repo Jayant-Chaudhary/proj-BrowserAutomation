@@ -11,7 +11,10 @@ Run:  uvicorn orchestrator.main:app --host 0.0.0.0 --port 8000
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -70,11 +73,62 @@ async def models():
                 "object": "model",
                 "owned_by": "local",
                 "input_modalities": ["text", "image"],
-                "context_length": settings.num_ctx,
+                # What Nanobrowser may send; the orchestrator trims to its own, smaller prompt (TEXT_NUM_CTX).
+                "context_length": 16384,
                 "max_tokens": 4096,
             }
         ],
     }
+
+
+# Chrome stops an extension's service worker when a fetch response takes more than 30 seconds to arrive. A step can
+# take longer (a CPU-bound 14B model, a VLM call on Laptop B), so a streamed reply starts at once and sends an SSE
+# comment line (ignored by SSE parsers) every few seconds until the answer is ready.
+HEARTBEAT_S = 5
+
+
+async def answer(turn, text: TextModel, link: VlmLink, entry: dict) -> tuple[str | None, dict | None, str, dict | None]:
+    """The reply to one request: (tool name or None for text, its arguments, text, usage)."""
+    if turn.kind == "probe":
+        entry["reply"] = "report_status"
+        return "report_status", {"status": "ok"}, "", None
+
+    if turn.kind == "chat":
+        if turn.image_b64 and link.connected:
+            r = await link.run("chat", turn.chat_prompt, turn.image_b64, system=turn.chat_system)
+            said = (r.result or {}).get("text", "") if r else ""
+        else:
+            said, _ = await text.chat(
+                [{"role": "system", "content": turn.chat_system}, {"role": "user", "content": turn.chat_prompt}]
+            )
+        entry["reply"] = said[:300]
+        return None, None, said, None
+
+    if turn.kind == "done_only":
+        summary, stats = await text.chat(
+            [
+                {"role": "system", "content": "Write the final answer for the user in two or three sentences."},
+                {"role": "user", "content": f"Task: {turn.task}\nActions taken:\n"
+                 + "\n".join(f"- {s.name} {s.args} -> {s.result[:200]}" for s in turn.steps[-8:])},
+            ]
+        )
+        args = {"outcome": "partial", "summary": summary}
+        entry["reply"] = {"done": args}
+        return "done", args, "", stats
+
+    result = await run_step(turn, text, link, settings)
+    if result.own_call:
+        name, args = result.own_call
+    else:
+        name, args = formatter.to_tool_call(
+            result.command or Command(action="ask_user", message="What next?", reason="no command")
+        )
+    entry.update(
+        reply={name: args}, attempts=result.attempts, notes=result.notes, perception=result.perception,
+        verified=result.verified, advisory=result.advisory, timings=result.timings,
+    )
+    usage = next((v for k, v in result.timings.items() if k.startswith("decide_")), None)
+    return name, args, "", usage
 
 
 @app.post("/v1/chat/completions")
@@ -83,6 +137,7 @@ async def chat_completions(request: Request):
     turn = parse(body)
     text: TextModel = request.app.state.text
     link: VlmLink = request.app.state.link
+    log: RequestLog = request.app.state.log
     entry: dict = {
         "kind": turn.kind,
         "redaction": request.headers.get("x-redaction-scheme"),
@@ -96,49 +151,42 @@ async def chat_completions(request: Request):
         "tags_seen": sorted(turn.known_tags),
     }
     if settings.log_images and turn.image_b64:
-        entry["image_file"] = request.app.state.log.save_image(turn.image_b64)
-    try:
-        if turn.kind == "probe":
-            entry["reply"] = "report_status"
-            return reply(turn.stream, "report_status", {"status": "ok"})
+        entry["image_file"] = log.save_image(turn.image_b64)
 
-        if turn.kind == "chat":
-            if turn.image_b64 and link.connected:
-                r = await link.run("chat", turn.chat_prompt, turn.image_b64, system=turn.chat_system)
-                answer = (r.result or {}).get("text", "") if r else ""
-            else:
-                answer, _ = await text.chat(
-                    [{"role": "system", "content": turn.chat_system}, {"role": "user", "content": turn.chat_prompt}]
-                )
-            entry["reply"] = answer[:300]
-            return reply(turn.stream, None, None, answer)
+    if not turn.stream:
+        try:
+            name, args, said, usage = await answer(turn, text, link, entry)
+            return reply(False, name, args, said, usage)
+        except TextModelError as e:
+            entry["error"] = str(e)
+            return JSONResponse({"error": {"message": str(e), "type": "server_error"}}, status_code=502)
+        finally:
+            log.write(entry)
 
-        if turn.kind == "done_only":
-            summary, stats = await text.chat(
-                [
-                    {"role": "system", "content": "Write the final answer for the user in two or three sentences."},
-                    {"role": "user", "content": f"Task: {turn.task}\nActions taken:\n"
-                     + "\n".join(f"- {s.name} {s.args} -> {s.result[:200]}" for s in turn.steps[-8:])},
-                ]
-            )
-            args = {"outcome": "partial", "summary": summary}
-            entry["reply"] = {"done": args}
-            return reply(turn.stream, "done", args, usage=stats)
+    async def events():
+        started = time.monotonic()
+        work = asyncio.create_task(answer(turn, text, link, entry))
+        try:
+            while True:
+                done, _ = await asyncio.wait({work}, timeout=HEARTBEAT_S)
+                if done:
+                    break
+                yield f": working {int(time.monotonic() - started)}s\n\n"
+            try:
+                name, args, said, usage = work.result()
+            except TextModelError as e:
+                entry["error"] = str(e)
+                # Headers are already sent (200), so the error travels as an OpenAI-style error chunk.
+                yield f"data: {json.dumps({'error': {'message': str(e), 'type': 'server_error'}})}\n\n"
+                return
+            for chunk in formatter.stream(name, args, said, usage):
+                yield chunk
+        finally:
+            if not work.done():
+                # The extension went away (stopped run, closed panel): no point finishing the step.
+                work.cancel()
+                entry["error"] = "client disconnected"
+            entry["ms"] = int((time.monotonic() - started) * 1000)
+            log.write(entry)
 
-        result = await run_step(turn, text, link, settings)
-        if result.own_call:
-            name, args = result.own_call
-        else:
-            name, args = formatter.to_tool_call(result.command or Command(action="ask_user", message="What next?",
-                                                                          reason="no command"))
-        entry.update(
-            reply={name: args}, attempts=result.attempts, notes=result.notes, perception=result.perception,
-            verified=result.verified, advisory=result.advisory, timings=result.timings,
-        )
-        usage = next((v for k, v in result.timings.items() if k.startswith("decide_")), None)
-        return reply(turn.stream, name, args, usage=usage)
-    except TextModelError as e:
-        entry["error"] = str(e)
-        return JSONResponse({"error": {"message": str(e), "type": "server_error"}}, status_code=502)
-    finally:
-        request.app.state.log.write(entry)
+    return StreamingResponse(events(), media_type="text/event-stream")

@@ -20,7 +20,8 @@ class Settings:
     # The decider: qwen3:14b in Ollama on this laptop.
     ollama_url: str = os.environ.get("OLLAMA_URL", "http://localhost:11434")
     text_model: str = os.environ.get("TEXT_MODEL", "qwen3:14b")
-    num_ctx: int = int(os.environ.get("TEXT_NUM_CTX", "16384"))
+    # 8k: the compact prompt is ~2k tokens; at 16k qwen3:14b spills further off an 8 GB GPU and a step took 8-114 s.
+    num_ctx: int = int(os.environ.get("TEXT_NUM_CTX", "8192"))
     text_timeout_s: float = float(os.environ.get("TEXT_TIMEOUT_S", "120"))
 
     # The VLM worker on Laptop B, over wss. Empty URL: run text-only.
@@ -32,6 +33,11 @@ class Settings:
     # ws:// without TLS, for a test on one machine only.
     vlm_allow_insecure: bool = _bool("VLM_ALLOW_INSECURE")
     vlm_timeout_s: float = float(os.environ.get("VLM_TIMEOUT_S", "10"))
+
+    # When the VLM describes a screenshot: "auto" only when the page outline is thin (few refs: canvas, images, an
+    # unreadable page), "always", or "never". Each description costs 10-40 s on Laptop B; verify is not affected.
+    perceive: str = os.environ.get("PERCEIVE", "auto")
+    perceive_min_refs: int = int(os.environ.get("PERCEIVE_MIN_REFS", "8"))
 
     # Retries after the first attempt, before the step becomes ask_user.
     max_retries: int = int(os.environ.get("MAX_RETRIES", "2"))

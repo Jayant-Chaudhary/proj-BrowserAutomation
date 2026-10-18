@@ -196,3 +196,34 @@ def test_models_endpoint_declares_vision(client):
     c, _ = client
     m = c.get("/v1/models").json()["data"][0]
     assert m["id"] == "privacy-agent" and "image" in m["input_modalities"] and m["context_length"] > 0
+
+
+def test_stream_sends_heartbeats_while_the_step_works(client, monkeypatch):
+    import asyncio as aio
+    from orchestrator import main
+
+    c, app = client
+    monkeypatch.setattr(main, "HEARTBEAT_S", 0.05)
+
+    class Slow(FakeText):
+        async def decide(self, messages):
+            await aio.sleep(0.3)
+            return await super().decide(messages)
+
+    app.state.text = Slow([{"action": "type", "ref": "e3", "value": "[[EMAIL_1]]", "reason": "r"}])
+    with c.stream("POST", "/v1/chat/completions", json=agent_body([("snapshot", {}, OUTLINE)], stream=True)) as r:
+        lines = [l for l in r.iter_lines() if l]
+    assert any(l.startswith(": working") for l in lines)
+    data = [json.loads(l[6:]) for l in lines if l.startswith("data: {")]
+    assert data[0]["choices"][0]["delta"]["tool_calls"][0]["function"]["name"] == "set"
+    assert lines[-1] == "data: [DONE]"
+
+
+def test_perceive_only_on_thin_outlines():
+    from orchestrator.config import Settings
+    from orchestrator.pipeline.step import wants_perception
+
+    rich = parse(agent_body([("snapshot", {}, OUTLINE * 3)]))
+    thin = parse(agent_body([("snapshot", {}, "[e1] heading «Canvas app»")]))
+    s = Settings()
+    assert not wants_perception(rich, s) and wants_perception(thin, s)
