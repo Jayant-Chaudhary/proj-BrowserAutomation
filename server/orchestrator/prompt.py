@@ -51,6 +51,20 @@ def decide_messages(turn: Turn, perception: dict | None, notes: list[str], snaps
             + "Answer it first: choose the control the request needs, or close it. Its title is not a button. "
             + ("The page behind it cannot be used until it is gone." if dialog.blocking else "")
         )
+    choices = turn.open_choices()
+    if choices:
+        parts.append(
+            f"A LIST OF CHOICES IS OPEN: {choices.line}\nIts options:\n"
+            + "\n".join(f"- {o}" for o in choices.options[:20])
+            + ("\n… more options in the outline" if len(choices.options) > 20 else "")
+            + "\nTo choose, click the option the request needs (its ref)."
+        )
+    if turn.js_dialog_open():
+        parts.append(
+            "A BROWSER DIALOG IS WAITING (alert, confirm or prompt). The page cannot be used until it is answered: "
+            'action "dialog" with "accept" true (OK) or false (Cancel).\n'
+            f"The browser reported: {turn.last.result.splitlines()[0][:300] if turn.last and turn.last.result else ''}"
+        )
     covered = turn.last and re.search(r"covered by ([^\n]*?) at its click point", turn.last.result)
     if covered:
         parts.append(

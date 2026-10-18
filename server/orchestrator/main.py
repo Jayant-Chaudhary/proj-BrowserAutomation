@@ -172,13 +172,20 @@ async def answer(turn, text: TextModel, link: VlmLink, entry: dict) -> tuple[str
 
 @app.post("/v1/chat/completions")
 async def chat_completions(request: Request):
-    body = await request.json()
+    # How long the body takes to arrive after its headers: the upload time, which a tunnel can make long.
+    received = time.monotonic()
+    raw = await request.body()
+    upload_ms = int((time.monotonic() - received) * 1000)
+    body = json.loads(raw)
     turn = parse(body)
     text: TextModel = request.app.state.text
     link: VlmLink = request.app.state.link
     log: RequestLog = request.app.state.log
     entry: dict = {
         "kind": turn.kind,
+        "body_kb": len(raw) // 1024,
+        "upload_ms": upload_ms,
+        "via_tunnel": "cf-ray" in request.headers,
         "redaction": request.headers.get("x-redaction-scheme"),
         "task": turn.task[:300],
         "earlier_requests": [r[:120] for r in turn.earlier_requests],

@@ -12,7 +12,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-Action = Literal["navigate", "click", "type", "scroll", "ask_user", "done", "press"]
+Action = Literal["navigate", "click", "type", "scroll", "ask_user", "done", "press", "dialog"]
 # `press` is never offered to the model (see ollama_schema): the server uses it as the keyboard fallback for a button the
 # layer refuses to click because something covers it.
 
@@ -36,6 +36,7 @@ class Command(BaseModel):
     # ask_user: "input" asks a question; "takeover" hands the step to the user (the server's out-of-tries step).
     ask_kind: Literal["input", "takeover"] = "input"
     keys: str | None = None
+    accept: bool | None = Field(default=None, description="dialog: true for OK or Accept, false for Cancel or Dismiss")
     outcome: Literal["success", "partial", "failed"] | None = None
     summary: str | None = Field(default=None, description="done: the answer for the user")
     reason: str = Field(description="one short sentence: why this action")
@@ -46,7 +47,7 @@ def ollama_schema() -> dict:
     return {
         "type": "object",
         "properties": {
-            "action": {"type": "string", "enum": ["navigate", "click", "type", "scroll", "ask_user", "done"]},
+            "action": {"type": "string", "enum": ["navigate", "click", "type", "scroll", "ask_user", "done", "dialog"]},
             "url": {"type": "string"},
             "ref": {"type": "string"},
             "point": {
@@ -57,6 +58,7 @@ def ollama_schema() -> dict:
             "visual": {"type": "string"},
             "value": {"type": "string"},
             "direction": {"type": "string", "enum": ["up", "down"]},
+            "accept": {"type": "boolean"},
             "message": {"type": "string"},
             "outcome": {"type": "string", "enum": ["success", "partial", "failed"]},
             "summary": {"type": "string"},

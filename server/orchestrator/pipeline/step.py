@@ -30,7 +30,7 @@ from ..command import Command, Point
 from ..config import Settings
 from ..prompt import decide_messages
 from ..text_model import TextModel, TextModelError
-from ..turn import REF, Turn
+from ..turn import CHOICES_INTENT, REF, Turn
 from ..vlm_link import VlmLink
 from .check import check
 from .grid import locate_on_grid
@@ -148,7 +148,10 @@ async def run_step(turn: Turn, text: TextModel, link: VlmLink, settings: Setting
         return out
 
     if turn.needs_snapshot():
-        out.own_call = observe(turn, settings, ("snapshot", {"intent": "Look at the page before acting"}))
+        act = turn.last_action_index()
+        opened = 0 <= turn.snapshot_at < act and turn.may_have_opened_choices(turn.steps[act])
+        intent = CHOICES_INTENT if opened else "Look at the page before acting"
+        out.own_call = observe(turn, settings, ("snapshot", {"intent": intent}))
         return out
 
     # One screenshot per new outline, for the VLM; only when Nanobrowser offers the tool and Laptop B is there.
