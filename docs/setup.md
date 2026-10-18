@@ -210,10 +210,13 @@ Expected log: `VLM link up (gemma4)` (the model name B reports). Then check:
 ```bash
 curl localhost:8000/health
 # {"ok":true,"text_model":"qwen3:14b","vlm":"gemma4"}     <- "vlm": null means the link is down
+curl localhost:8000/health/vlm
+# {"ok":true,"model":"gemma4","ms":20255,...,"expected":271,"answer":"271","correct":true}
+#   <- the whole vision route: a test image with a random number goes to Laptop B and the VLM must read it back
 ```
 
 Add `LOG_IMAGES=1` to save every (masked) screenshot the server receives to `server/logs/images/`: useful for the
-demo. Optional settings: `TEXT_MODEL`, `TEXT_NUM_CTX` (16384), `VLM_TIMEOUT_S` (10), `MAX_RETRIES` (2), `SNAPSHOT_CHARS`,
+demo. Optional settings: `TEXT_MODEL`, `TEXT_NUM_CTX` (8192), `VLM_TIMEOUT_S` (60), `MAX_RETRIES` (2), `SNAPSHOT_CHARS`,
 and `LOG_DIR`.
 
 ### 2.5 Point Nanobrowser at the orchestrator

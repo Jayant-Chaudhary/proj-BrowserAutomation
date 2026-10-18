@@ -12,8 +12,11 @@ Run:  uvicorn orchestrator.main:app --host 0.0.0.0 --port 8000
 from __future__ import annotations
 
 import asyncio
+import base64
+import io
 import json
 import logging
+import random
 import time
 from contextlib import asynccontextmanager
 
@@ -59,6 +62,41 @@ def reply(stream: bool, name: str | None, args: dict | None, text: str = "", usa
 async def health(request: Request):
     link: VlmLink = request.app.state.link
     return {"ok": True, "text_model": settings.text_model, "vlm": link.model if link.connected else None}
+
+
+def number_image(number: int) -> str:
+    """A plain PNG with one large number on it, as base64: the image the vision route test asks the VLM to read."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    img = Image.new("RGB", (640, 360), "white")
+    draw = ImageDraw.Draw(img)
+    draw.text((320, 180), str(number), fill="black", anchor="mm", font=ImageFont.load_default(size=160))
+    out = io.BytesIO()
+    img.save(out, format="PNG")
+    return base64.b64encode(out.getvalue()).decode()
+
+
+@app.get("/health/vlm")
+async def health_vlm(request: Request):
+    """Tests the whole vision route: an image with a random number goes over wss to the worker on Laptop B, the VLM
+    reads it, and the answer comes back. `correct` says the model really looked at the image."""
+    link: VlmLink = request.app.state.link
+    if not link.enabled:
+        return {"ok": False, "error": "no VLM_URL: the orchestrator runs text-only"}
+    if not link.connected:
+        return {"ok": False, "url": settings.vlm_url, "error": "the link to Laptop B is down (is the worker running?)"}
+    number = random.randint(100, 999)
+    started = time.monotonic()
+    reply = await link.run("chat", "What number is written in this image? Answer with the number only.", number_image(number))
+    ms = int((time.monotonic() - started) * 1000)
+    if reply is None:
+        return {"ok": False, "model": link.model, "ms": ms, "error": link.last_error}
+    answer = str((reply.result or {}).get("text", "")).strip()
+    correct = str(number) in answer
+    return {
+        "ok": correct, "model": link.model, "ms": ms, "worker_ms": reply.ms, "timeout_s": settings.vlm_timeout_s,
+        "expected": number, "answer": answer[:200], "correct": correct,
+    }
 
 
 @app.get("/v1/models")
@@ -125,7 +163,8 @@ async def answer(turn, text: TextModel, link: VlmLink, entry: dict) -> tuple[str
         )
     entry.update(
         reply={name: args}, attempts=result.attempts, notes=result.notes, perception=result.perception,
-        verified=result.verified, advisory=result.advisory, timings=result.timings,
+        verified=result.verified, advisory=result.advisory, warnings=result.warnings, grid=result.grid,
+        timings=result.timings,
     )
     usage = next((v for k, v in result.timings.items() if k.startswith("decide_")), None)
     return name, args, "", usage

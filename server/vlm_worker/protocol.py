@@ -34,7 +34,7 @@ class Job(BaseModel):
     image_png_b64: str | None = None
     prompt: str
     system: str | None = None
-    deadline_ms: int = 10_000
+    deadline_ms: int = 60_000
 
 
 class JobResult(BaseModel):

@@ -18,6 +18,7 @@ from ..turn import TAG, Turn
 NEAR_MISS = re.compile(
     r"\[\[?\s*[A-Za-z]+_?\d*\s*\]\]?|⟦[^⟧]*⟧|\{\{[^}]*\}\}|\b(?:NAME|EMAIL|PHONE|ADDRESS|CARD|ID|DATE|PERSONAL)_\d+\b"
 )
+NAME_BOX = re.compile(r"name box", re.I)
 RISKY = re.compile(
     r"submit|send|pay|purchase|buy|order|checkout|delete|remove|confirm|transfer|sign up|register|book|post|publish",
     re.I,
@@ -50,16 +51,31 @@ def check(raw: dict, turn: Turn) -> Checked:
             if cmd.ref not in turn.known_refs:
                 problems.append(f'The ref "{cmd.ref}" is not in the page outline. Use a ref that is shown.')
         elif cmd.point:
-            # The layer refuses {x, y} targets (CAPABILITY_DISABLED): it acts only on elements it showed the agent.
-            problems.append("Clicking by position is not available. Use a ref from the outline.")
-        elif cmd.action == "click":
-            problems.append("click needs a ref from the outline.")
+            # Points come from the server's grid (pipeline/grid.py), which the VLM checks; the model gives a description.
+            problems.append('Do not give coordinates. Use a ref from the outline, or "visual": what to click as it looks.')
+        elif cmd.action == "click" and not (cmd.visual or "").strip():
+            problems.append('click needs a ref from the outline, or "visual": what to click as it looks.')
     if cmd.action == "type" and cmd.value:
         # The outline quotes page text as «…»; a model that copies the quotes would type them into the field.
         cmd.value = cmd.value.replace("«", "").replace("»", "")
         # The same for the outline's JSON-style quotes around a whole value: "[[EMAIL_1]]" with its quotes.
         if len(cmd.value) >= 2 and cmd.value[0] == cmd.value[-1] == '"':
             cmd.value = cmd.value[1:-1]
+    dialog = turn.open_dialog()
+    if dialog and dialog.blocking and cmd.action in ("click", "type") and cmd.ref and cmd.ref not in dialog.refs:
+        # A modal covers the page: an action behind it is blocked (IRCTC's language dialog, 2026-10-18).
+        controls = ", ".join(dialog.controls[:6]) or "its close button"
+        problems.append(
+            f"{cmd.ref} is behind the open dialog {dialog.line}. Answer or close the dialog first, with one of its "
+            f"controls: {controls}."
+        )
+    if cmd.action == "type" and cmd.ref and NAME_BOX.search(element_line(turn, cmd.ref)):
+        # Google Sheets draws its cells on a canvas: the Name Box is the only field near "A1" in the outline, and a run
+        # typed "hello" there instead of into the cell.
+        problems.append(
+            f"{cmd.ref} is the Name Box: it holds a cell address, not cell content. To write into the selected cell, "
+            "answer type without a ref: it types into the focused cell."
+        )
     if cmd.action == "type":
         if not cmd.value:
             problems.append("type needs a value.")

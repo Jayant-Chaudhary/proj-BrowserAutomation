@@ -8,11 +8,13 @@ failed attempts on an element of the open page are counted, and each new attempt
   0         the model's click, as it is
   1         vision check: a fresh labelled screenshot, and the VLM says which red label is on the visible element and
             whether something covers it; the click goes to that ref (often a different, visible copy of the element)
-  2         keyboard: focus the element and press Enter (the layer's `press` does not hit-test, so a cover does not stop
+  2         grid: the VLM finds the element on a grid over the screenshot and the click goes to that point (grid.py);
+            the layer turns the point into the element there, with the same gate
+  3         keyboard: focus the element and press Enter (the layer's `press` does not hit-test, so a cover does not stop
             it); the layer's own gate still classifies the action
-  3+        out of tries: hand the step to the user (ask_user "takeover") and stop retrying
+  4+        out of tries: hand the step to the user (ask_user "takeover") and stop retrying
 
-Clicking by position is not part of the ladder: this Nanobrowser refuses {x, y} targets.
+Without the vision model (no screenshot tool, or Laptop B down), the vision and grid rungs are skipped.
 """
 
 from __future__ import annotations
@@ -25,7 +27,7 @@ from ..command import Command
 from ..turn import Turn
 from ..vlm_link import VlmLink
 
-MAX_TRIES_PER_ELEMENT = 3
+MAX_TRIES_PER_ELEMENT = 4
 MAX_FAILURES_PER_PAGE = 6
 
 
@@ -90,7 +92,7 @@ async def recover(cmd: Command, turn: Turn, link: VlmLink, screenshot_call: tupl
         return Recovery(command=takeover(label, n, why), note=f"out of tries on {label}")
 
     if n == 1 and link.connected and turn.can_screenshot:
-        if turn.screenshot_is_stale():
+        if turn.screenshot_is_stale() or not turn.screenshot_labelled:
             return Recovery(own_call=screenshot_call, note=f"fresh screenshot to locate {label} after one failure [line: {line}]")
         reply = await link.run("chat", locate_prompt(label), turn.image_b64)
         where = parse_location((reply.result or {}).get("text", "")) if reply else None
@@ -103,7 +105,14 @@ async def recover(cmd: Command, turn: Turn, link: VlmLink, screenshot_call: tupl
         # The VLM saw nothing better: go straight to the keyboard.
         why = f"{why}; vision: {(where or {}).get('reason', 'no answer')}"
 
-    # Second failure, or the first one when no vision check is possible.
+    if n == 2 and link.connected and turn.can_screenshot:
+        # The grid click: step.py finds the point (a fresh screenshot without labels first) and checks it.
+        return Recovery(
+            command=Command(action="click", visual=f"the {label}", reason=f"Grid click on {label} ({why})"),
+            note=f"grid click on {label}",
+        )
+
+    # Third failure, or an earlier one when no vision check is possible.
     return Recovery(
         command=Command(action="press", ref=cmd.ref, keys="Enter", reason=f"Keyboard fallback for {label} ({why})"),
         note=f"keyboard fallback on {label}",

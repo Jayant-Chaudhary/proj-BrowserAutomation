@@ -23,13 +23,38 @@ REF = re.compile(r"\[([a-z]+\d+|[A-Z]{12}\d+)\]")
 TAG = re.compile(r"\[\[[A-Z]+_\d+\]\]")
 BROWSER_STATE = re.compile(r"<browser-state>.*?</browser-state>", re.S)
 SCREENSHOT_LINE = re.compile(r"screenshot · tab \d+ · (\d+)×(\d+) px · scale ([\d.]+)")
-# Results after which the page must be observed again before acting.
-STALE = re.compile(r"NODE_DETACHED|STALE_REF|UNKNOWN_REF|NOT_SHOWN|observe before|no longer valid|navigated", re.I)
+# Results after which the page must be observed again before acting. A receipt reports a page change as
+# "navigation: new-document «…»", "new document «…»" or "URL → «…»" (client/src/browser-control/core/text.ts): the
+# Google Forms run of 2026-10-18 clicked "Blank form", landed on the editor and kept acting on the list page's refs.
+STALE = re.compile(
+    r"NODE_DETACHED|STALE_REF|UNKNOWN_REF|NOT_SHOWN|observe before|no longer valid|navigated|navigation: |new document|URL →",
+    re.I,
+)
 REFUSED_TAG = re.compile(r"error (UNKNOWN_TAG|MALFORMED_TAG)")
 # A failed action's result: the layer's error code, or a receipt saying nothing happened.
 ACTION_ERROR = re.compile(r"\berror ([A-Z_]{3,})")
 NO_EFFECT = re.compile(r"effect:\s*none", re.I)
 ACTIONS = ("click", "press", "set", "type", "fill_form", "hover")
+# Steps that only look at the page.
+OBSERVATIONS = ("snapshot", "screenshot", "find", "read", "wait")
+# The layer read the value back and it is what was asked for.
+EXPECT_MET = re.compile(r"^expect: met\b", re.M)
+LABELLED_SHOT = re.compile(r"screenshot · .* · \d+ labels")
+
+
+# A dialog line of the outline: `dialog "Alert" (modal)`, with or without a ref; its content is indented under it.
+DIALOG_LINE = re.compile(r'^(\s*)(?:\[[^\]]+\]\s+)?(dialog|alertdialog)\b(.*)$')
+
+
+@dataclass
+class Dialog:
+    """A dialog open on the page, from the outline: its line, the refs inside it and their lines."""
+
+    line: str
+    refs: set[str]
+    controls: list[str]
+    # A modal dialog or an alert dialog blocks the page behind it.
+    blocking: bool
 
 
 @dataclass
@@ -58,6 +83,8 @@ class Turn:
     snapshot_at: int = -1
     # Index in `steps` of the latest screenshot; -1 when there is none.
     screenshot_at: int = -1
+    # Whether the latest screenshot has the red ref labels drawn on it.
+    screenshot_labelled: bool = False
     known_refs: set[str] = field(default_factory=set)
     known_tags: set[str] = field(default_factory=set)
     image_b64: str | None = None
@@ -74,7 +101,9 @@ class Turn:
 
     def needs_snapshot(self) -> bool:
         """No observation yet, or the last result says the page moved on from the refs we hold."""
-        last = self.last
+        # A settle `wait` only lets the page finish loading: the step before it decides.
+        at = next((i for i in range(len(self.steps) - 1, -1, -1) if self.steps[i].name != "wait"), -1)
+        last = self.steps[at] if at >= 0 else None
         # Never two snapshots in a row: a page that cannot be observed (a new tab, chrome://) goes to the model, which
         # can navigate away, instead of looping.
         if last is not None and last.name == "snapshot":
@@ -83,7 +112,7 @@ class Turn:
             return True
         if last is None:
             return False
-        if last.name in ("navigate", "ask_user") and self.snapshot_at < len(self.steps) - 1:
+        if last.name in ("navigate", "ask_user") and self.snapshot_at < at:
             # A new page, or the user may have changed the page while the agent waited.
             return True
         return bool(STALE.search(last.result)) and last.name != "snapshot"
@@ -100,6 +129,60 @@ class Turn:
     def screenshot_is_stale(self) -> bool:
         """Something was done on the page after the latest screenshot (a verify would look at an old picture)."""
         return self.screenshot_at < len(self.steps) - 1 or self.image_b64 is None
+
+    def needs_settle(self) -> bool:
+        """The page was acted on since anything looked at it: let it finish loading before the next look."""
+        return self.last is not None and self.last.name not in OBSERVATIONS and "wait" in self.tools
+
+    def settle_problem(self) -> str | None:
+        """What a settle `wait` after the last action reported when the page did not settle in time."""
+        act = self.last_action_index()
+        for step in self.steps[act + 1 :]:
+            if step.name == "wait" and step.result.startswith("error"):
+                return "the page was still loading when it was observed"
+        return None
+
+    def unsure(self, step: Step, min_refs: int) -> bool:
+        """Whether the page outline alone cannot confirm that an action worked, so a picture is needed.
+
+        Sure: a value the layer read back (expect: met), a page change (a new outline follows anyway), an error (nothing
+        was dispatched; the ladder and the notes handle it), and everything that is not an action on an element.
+        Unsure: a click, press or hover the layer could not confirm, a value it could not read back, and any action on
+        a page whose outline is thin (a canvas app shows little of itself in the outline)."""
+        if step.name not in ACTIONS or STALE.search(step.result):
+            return False
+        error = ACTION_ERROR.search(step.result)
+        if error:
+            # Nothing was dispatched, so nothing changed; but OBSCURED means something is on top of the page (often a
+            # popup), and a picture shows what it is.
+            return error.group(1) == "OBSCURED"
+        if len(REF.findall(self.snapshot)) < min_refs:
+            return True
+        return not EXPECT_MET.search(step.result)
+
+    def describe(self, step: Step) -> str:
+        """An action in words, for the vision model: 'click on button "Blank"' plus the layer's receipt."""
+        try:
+            args = json.loads(step.args or "{}")
+        except json.JSONDecodeError:
+            args = {}
+        target = args.get("target") if isinstance(args.get("target"), dict) else {}
+        what = f"{step.name} on {self.element_label(target['ref'])}" if target.get("ref") else step.name
+        value = args.get("value", args.get("text", args.get("keys")))
+        if isinstance(value, str) and value:
+            what += f" with {value!r}"
+        receipt = "; ".join(line for line in step.result.splitlines()[:4] if line.strip())
+        return f"{what} (the browser reported: {receipt})" if receipt else what
+
+    def last_action_index(self) -> int:
+        for i in range(len(self.steps) - 1, -1, -1):
+            if self.steps[i].name not in OBSERVATIONS:
+                return i
+        return -1
+
+    def acted_since_snapshot(self) -> bool:
+        """Something was done on the page after the latest outline: what the agent knows of the page may be old."""
+        return any(s.name in ACTIONS or s.name == "navigate" for s in self.steps[self.snapshot_at + 1 :])
 
     def filled_since_snapshot(self) -> dict[str, str]:
         """Fields the agent set after the latest outline, with the value it gave, from calls that did not fail."""
@@ -123,10 +206,8 @@ class Turn:
 
     def last_action(self) -> Step | None:
         """The newest step that acted on the page (not an observation)."""
-        for step in reversed(self.steps):
-            if step.name not in ("snapshot", "screenshot", "find", "read", "wait"):
-                return step
-        return None
+        i = self.last_action_index()
+        return self.steps[i] if i >= 0 else None
 
     def outline_line(self, ref: str) -> str:
         """The line that shows a ref, newest first, preferring one with the element's «name»: a screenshot's label
@@ -150,11 +231,32 @@ class Turn:
         return f'{m.group(1)} "{name}"' if name else m.group(1)
 
     def steps_on_page(self) -> list[Step]:
-        """The steps since the latest navigate: the actions on the page that is open now."""
+        """The steps since the latest navigate, or since the user last took over (ask_user): the actions on the page
+        as it is now. Without the ask_user reset, a page that used up its failure budget kept asking the user to take
+        over, again and again, after they had already fixed it (IRCTC, 2026-10-18)."""
         for i in range(len(self.steps) - 1, -1, -1):
-            if self.steps[i].name == "navigate":
+            if self.steps[i].name in ("navigate", "ask_user"):
                 return self.steps[i + 1 :]
         return self.steps
+
+    def open_dialog(self) -> Dialog | None:
+        """The dialog the latest outline shows on top of the page (the last one in the outline), if any."""
+        lines = self.snapshot.splitlines()
+        found = None
+        for i, line in enumerate(lines):
+            m = DIALOG_LINE.match(line)
+            if not m:
+                continue
+            indent = len(m.group(1))
+            inside = []
+            for child in lines[i + 1 :]:
+                if child.strip() and len(child) - len(child.lstrip()) <= indent:
+                    break
+                inside.append(child)
+            refs = set(REF.findall("\n".join(inside)))
+            controls = [c.strip() for c in inside if REF.search(c)]
+            found = Dialog(line.strip(), refs, controls, m.group(2) == "alertdialog" or "modal" in m.group(3))
+        return found
 
     @staticmethod
     def failed(step: Step) -> bool:
@@ -172,6 +274,9 @@ class Turn:
                 continue
             ref = target.get("ref") if isinstance(target, dict) else None
             if ref and self.element_label(ref).lower() == label.lower():
+                out.append(step)
+            elif not ref and f"target: the {label}".lower() in str(json.loads(step.args or "{}").get("intent", "")).lower():
+                # A grid click (a point) on this element: its intent names what it was for (pipeline/step.py).
                 out.append(step)
         return out
 
@@ -285,6 +390,7 @@ def parse(body: dict) -> Turn:
             turn.image_scale = float(shot.group(3))
         if step.name == "screenshot" and step.result and not step.result.startswith("error"):
             turn.screenshot_at = i
+            turn.screenshot_labelled = bool(LABELLED_SHOT.search(step.result))
     # Refs the agent may use: those of the latest snapshot and of every result after it (diffs add refs).
     for step in turn.steps[max(turn.snapshot_at, 0) :]:
         turn.known_refs.update(REF.findall(step.result))

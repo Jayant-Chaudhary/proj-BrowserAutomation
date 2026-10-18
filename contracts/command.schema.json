@@ -27,7 +27,8 @@
         "type",
         "scroll",
         "ask_user",
-        "done"
+        "done",
+        "press"
       ],
       "title": "Action",
       "type": "string"
@@ -68,7 +69,20 @@
         }
       ],
       "default": null,
-      "description": "CSS pixels on the screenshot; only when no ref exists"
+      "description": "CSS pixels on the screenshot; set by the server's grid, never the model"
+    },
+    "visual": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "click: what to click as it looks, when the outline has no ref for it (cell A1)",
+      "title": "Visual"
     },
     "value": {
       "anyOf": [
@@ -111,6 +125,27 @@
       "default": null,
       "description": "ask_user: the question for the user",
       "title": "Message"
+    },
+    "ask_kind": {
+      "default": "input",
+      "enum": [
+        "input",
+        "takeover"
+      ],
+      "title": "Ask Kind",
+      "type": "string"
+    },
+    "keys": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Keys"
     },
     "outcome": {
       "anyOf": [

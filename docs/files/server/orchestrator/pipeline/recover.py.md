@@ -9,3 +9,5 @@
 **Used by.** pipeline/step.py
 
 **Notes and limits.** This Nanobrowser refuses {x, y} targets, so the ladder never clicks by position. Tested with a fixture button under an invisible layer (p-covered.html) and the real models: refused click → vision locate → Enter → done.
+
+**Changed (2026-10-18).** A grid rung: 1 failure → label locate (now asks for a labelled screenshot when the latest has none), 2 → grid click (`visual`), 3 → keyboard, 4 → hand over (`MAX_TRIES_PER_ELEMENT = 4`). A failed grid click counts against its element through its intent ("target: the …").

@@ -11,3 +11,5 @@
 **Changed after the first use from Chrome.** New action `navigate` with `url` (the first version could not open a site: "open youtube.com" failed).
 
 **Changed (2026-10-18, real runs).** `press` (server-only, never offered to the model) and `ask_kind` (input or takeover).
+
+**Changed (2026-10-18).** `visual`: what to click as it looks, when the outline has no ref for it. `point` is set only by the server's grid. `contracts/command.schema.json` regenerated (it also lacked `press` and `ask_kind`).

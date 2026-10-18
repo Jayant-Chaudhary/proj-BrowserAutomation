@@ -30,6 +30,7 @@ ollama pull qwen3:14b
 export VLM_URL=wss://192.168.1.20:8765 VLM_TOKEN=... VLM_CA_FILE=/path/to/cert.pem
 .venv/bin/uvicorn orchestrator.main:app --host 0.0.0.0 --port 8000
 curl localhost:8000/health        # {"ok":true,"text_model":"qwen3:14b","vlm":"qwen2.5vl:7b"}
+curl localhost:8000/health/vlm    # the VLM reads a random number off a test image: "correct": true, and how long it took
 ```
 
 Without `VLM_URL`, the orchestrator runs text-only. To test on one machine without TLS, start the worker with

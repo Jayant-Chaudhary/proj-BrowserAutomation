@@ -9,3 +9,5 @@
 **Used by.** main.py, pipeline/step.py, pipeline/verify.py
 
 **Notes and limits.** Refuses a ws:// URL unless VLM_ALLOW_INSECURE=1.
+
+**Changed (2026-10-18).** `last_error` says why the latest job got no answer (link down, timeout, worker error), so the step can report it instead of failing silently.

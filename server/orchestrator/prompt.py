@@ -6,6 +6,7 @@ and tool schemas are never forwarded; the command schema goes to Ollama as `form
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from .turn import Turn
@@ -33,10 +34,30 @@ def decide_messages(turn: Turn, perception: dict | None, notes: list[str], snaps
         parts.append(f"THE ACTIVE TAB IS: {turn.active_url}")
     if turn.browser_state:
         parts.append(turn.browser_state)
-    if perception:
+    if perception and "after_action" in perception:
+        parts.append(
+            "WHAT THE SCREEN SHOWS AFTER YOUR LAST ACTION (from the vision model):\n"
+            + json.dumps(perception, ensure_ascii=False)
+        )
+    elif perception:
         parts.append("WHAT THE SCREEN SHOWS (from the vision model):\n" + json.dumps(perception, ensure_ascii=False))
     if turn.snapshot:
         parts.append("PAGE OUTLINE (latest snapshot):\n" + _trim(turn.snapshot, snapshot_chars))
+    dialog = turn.open_dialog()
+    if dialog:
+        parts.append(
+            f"A DIALOG IS OPEN ON TOP OF THE PAGE: {dialog.line}\n"
+            + ("Its controls:\n" + "\n".join(f"- {c}" for c in dialog.controls[:12]) + "\n" if dialog.controls else "")
+            + "Answer it first: choose the control the request needs, or close it. Its title is not a button. "
+            + ("The page behind it cannot be used until it is gone." if dialog.blocking else "")
+        )
+    covered = turn.last and re.search(r"covered by ([^\n]*?) at its click point", turn.last.result)
+    if covered:
+        parts.append(
+            f"YOUR LAST ACTION WAS BLOCKED: something covers the page there ({covered.group(1)}). It is often a popup, "
+            "banner or dialog. Find its buttons (Close, OK, Accept, a choice such as a language) in the outline or in "
+            "the screen description and use one first. Clicking the covering element's title or empty area does nothing."
+        )
     filled = turn.filled_since_snapshot()
     if filled:
         parts.append(

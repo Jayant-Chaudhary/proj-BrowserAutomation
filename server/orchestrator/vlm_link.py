@@ -2,7 +2,8 @@
 
 One connection is kept open and re-opened with backoff when it drops. The first message is the shared token; the worker
 closes the connection without it. TLS trusts only the worker's own certificate (VLM_CA_FILE), with hostname checking on.
-Jobs are matched to replies by id. If the worker is down or slow, `run` returns None and the step goes on text-only.
+Jobs are matched to replies by id. If the worker is down or slow, `run` returns None and `last_error` says why: the step
+goes on text-only, and says so in its notes and to the user, never silently.
 """
 
 from __future__ import annotations
@@ -40,6 +41,8 @@ class VlmLink:
         self._pending: dict[str, asyncio.Future[JobResult]] = {}
         self._task: asyncio.Task | None = None
         self._ready = asyncio.Event()
+        # Why the latest job got no answer ("no answer within 60 s"); empty after a job that worked.
+        self.last_error = ""
 
     @property
     def enabled(self) -> bool:
@@ -103,6 +106,7 @@ class VlmLink:
     ) -> JobResult | None:
         """Sends one job and waits for its reply; None when the link is down, the job fails or the time runs out."""
         if not self.connected or self._ws is None:
+            self.last_error = "the link to Laptop B is down"
             return None
         timeout = self.settings.vlm_timeout_s
         job = Job(
@@ -115,10 +119,13 @@ class VlmLink:
             await self._ws.send(job.model_dump_json())
             reply = await asyncio.wait_for(fut, timeout)
         except Exception as e:  # noqa: BLE001 - a lost job is reported as None, never raised into the step
-            log.warning("VLM %s job failed: %s", kind, e)
+            self.last_error = f"no answer within {timeout:.0f} s" if isinstance(e, asyncio.TimeoutError) else f"link error: {e}"
+            log.warning("VLM %s job failed: %s", kind, self.last_error)
             self._pending.pop(job.id, None)
             return None
         if not reply.ok:
+            self.last_error = f"worker error: {reply.error}"
             log.warning("VLM %s job error: %s", kind, reply.error)
             return None
+        self.last_error = ""
         return reply

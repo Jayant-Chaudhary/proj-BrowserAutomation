@@ -11,3 +11,7 @@
 **Changed after the E2E runs.** Adds "FIELDS YOU ALREADY FILLED AFTER THE OUTLINE".
 
 **Changed after the first use from Chrome.** Shows CURRENT REQUEST, EARLIER REQUESTS and THE ACTIVE TAB in place of the whole chat as one task.
+
+**Changed (2026-10-18).** An after-action check is shown as "WHAT THE SCREEN SHOWS AFTER YOUR LAST ACTION".
+
+**Changed (2026-10-18, IRCTC run).** "A DIALOG IS OPEN ON TOP OF THE PAGE" with its controls, and "YOUR LAST ACTION WAS BLOCKED" after an `OBSCURED` error.

@@ -7,3 +7,5 @@
 **Depends on.** core/controller.ts (type ImagePrivacy)
 
 **Used by.** the layer's tool table
+
+**Changed (2026-10-18).** A screenshot of the visible page records `TabState.shot` (document, scroll position, size): the page a point target refers to.

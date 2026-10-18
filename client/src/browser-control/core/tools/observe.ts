@@ -284,6 +284,17 @@ export async function screenshot(ctx: ToolContext, args: ScreenshotArgs): Promis
     );
   }
   ctx.session.imagePrivacy?.onMasked(base64);
+  // Points (capability "vision") are given on a picture of the visible page; a cropped or full-page one is not that.
+  tab.shot =
+    args.ref || args.fullPage
+      ? undefined
+      : {
+          loaderId: frames[0].loaderId,
+          scrollX: scroll.x,
+          scrollY: scroll.y,
+          width: cssWidth,
+          height: shot.height / scale,
+        };
   return {
     data: { mimeType: 'image/png', base64, width: shot.width, height: shot.height, scale, origin },
     lines: [

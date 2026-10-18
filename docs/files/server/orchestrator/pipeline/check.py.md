@@ -15,3 +15,9 @@
 **Changed after the first use from Chrome.** Repeat guard (`repeated`): refuses navigating to the open address, repeating the last navigate, or the same value into the same field (a Google Forms run navigated to the same page six times).
 
 **Changed (2026-10-18, real runs).** Point clicks are refused (this Nanobrowser has no {x, y} targets). `done` with success is refused while a task placeholder is untyped. Values lose the outline's surrounding quotes.
+
+**Changed (2026-10-18).** `type` into an element named "Name Box" is refused with a note to type without a ref (into the focused cell); Google Sheets has no cells in the outline.
+
+**Changed (2026-10-18, IRCTC run).** A click or type on a ref behind an open modal or alert dialog is refused, with the dialog's controls named.
+
+**Changed (2026-10-18, grid).** A click needs a ref or a `visual`; coordinates from the model are refused (points come from the grid).

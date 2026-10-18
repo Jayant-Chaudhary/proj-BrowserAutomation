@@ -26,7 +26,10 @@ class Command(BaseModel):
     action: Action
     url: str | None = Field(default=None, description="navigate: the address to open, such as https://www.youtube.com")
     ref: str | None = Field(default=None, description="ref of the element from the page outline, such as e12")
-    point: Point | None = Field(default=None, description="CSS pixels on the screenshot; only when no ref exists")
+    point: Point | None = Field(default=None, description="CSS pixels on the screenshot; set by the server's grid, never the model")
+    visual: str | None = Field(
+        default=None, description="click: what to click as it looks, when the outline has no ref for it (cell A1)"
+    )
     value: str | None = Field(default=None, description="text to type; copy placeholders like [[NAME_1]] exactly")
     direction: Literal["up", "down"] | None = None
     message: str | None = Field(default=None, description="ask_user: the question for the user")
@@ -51,6 +54,7 @@ def ollama_schema() -> dict:
                 "properties": {"x": {"type": "number"}, "y": {"type": "number"}},
                 "required": ["x", "y"],
             },
+            "visual": {"type": "string"},
             "value": {"type": "string"},
             "direction": {"type": "string", "enum": ["up", "down"]},
             "message": {"type": "string"},

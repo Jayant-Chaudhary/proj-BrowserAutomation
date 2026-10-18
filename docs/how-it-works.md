@@ -48,14 +48,34 @@ know that the "model" is a pipeline.
    - a normal step of the task: the step pipeline below.
 5. **The step pipeline (the server-side feedback loop):**
    - If the last action was refused because of an unknown placeholder, ask the user. No model call.
-   - If there is no fresh page outline (or the user was just asked something), ask Nanobrowser for a `snapshot`. No
-     model call.
+   - If there is no fresh page outline (the user was just asked something, or the last action opened another page: its
+     result says `navigation: new-document`, `new document` or `URL →`), ask Nanobrowser for a `snapshot`. No model
+     call. Without this, the agent kept acting on the old page's refs after "Blank form" opened the Google Forms editor.
+   - **Let the page finish loading first.** Before the server looks at the page after an action (a snapshot or a
+     screenshot), it asks the layer to `wait` until the page has **settled**: the document has loaded and nothing in it
+     has changed for half a second. The limit is 15 seconds (`SETTLE_TIMEOUT_S`). The layer's own wait after a click or
+     `navigate` stops at 5 seconds, and Google Sheets and Forms were still building their page after that. A page that
+     never settles is still looked at, and the next action's reason tells you "the page was still loading".
    - With vision on, ask for one `screenshot` per new outline, with the ref labels (`a1`, `a5`, …) drawn on top of
-     the masked image.
-   - If there is a screenshot, send it over **wss** to Laptop B. The vision model describes the screen: the page
-     type, any popup, visible errors, the fields it can see. If Laptop B doesn't answer within 10 seconds, continue
-     without the description.
-   - The vision model only runs on a screenshot taken just now. Each call costs about 10 seconds.
+     the masked image. The vision model on Laptop B (over **wss**) **describes every new page**: the page type, any
+     popup, visible errors, the fields it can see. (It used to run only on outlines with fewer than 8 elements, so it
+     never looked at a Google page. `PERCEIVE=thin` brings the old rule back, `PERCEIVE=never` turns it off.)
+   - **After each action, the outline decides whether a picture is needed.** The layer's result already says what
+     happened, so the server reads it:
+     - **Sure, no picture:** a value the layer read back and found right (`expect: met`), an action that opened a new
+       page (it gets a new outline and description anyway), and anything that is not an action on an element.
+     - **Not sure, so a fresh picture:** a click, key press or hover with no confirmed effect, a value that could not be
+       read back, typing into whatever has focus, and any action on a page whose outline shows little of it (fewer
+       than 8 elements, as in a canvas app). The vision model is asked about **that action**: "did it take effect,
+       what is visible now because of it, and where?" Its answer goes into qwen3:14b's prompt as "what the screen
+       shows after your last action".
+     A sure result says the action happened, not that it hit the right thing (typing into the Name Box reads back
+     fine), so the Name Box rule and the final check below still apply.
+   - If Laptop B doesn't answer within 60 seconds (`VLM_TIMEOUT_S`), continue without it, but **never silently**: the
+     reason goes into the log, and the next action's reason, which Nanobrowser shows you, says "Text only: the vision
+     model did not …" and why.
+   - The vision model only runs on a screenshot taken just now. Measured on Laptop B: a description takes 4–37
+     seconds, a check about 9 seconds.
    - Build a **short** prompt for qwen3:14b: the **current request** (the last thing you asked in the chat; earlier
      requests are listed as already handled), the active tab, and a list of the fields it has already filled: the task, the screen description, the outline, the last few results,
      and any reasons earlier answers were rejected. Nanobrowser's 19 tool definitions (about 9k tokens) are not
@@ -68,15 +88,53 @@ know that the "model" is a pipeline.
    - Before a risky click, take a fresh screenshot and ask the vision model to **verify** the click. For a click by
      position, its "no" blocks the click. For a click on a ref, its "no" is only recorded, because the 7B vision model
      wrongly said "not visible" in every test. The ref check and Nanobrowser's own confirmation still apply.
-   - The vision model describes a screenshot only when the outline is thin (fewer than 8 elements). A field covered by
-     a grey box has a value; an empty white field is empty.
+   - On the screenshots, a field covered by a grey box has a value; an empty white field is empty.
+   - **A pop-up comes first.** If the outline shows a dialog (`dialog "Alert" (modal)`), qwen3:14b's prompt says so and
+     lists the dialog's buttons ("answer it first; its title is not a button"). While a modal or alert dialog is open,
+     a click or typing on anything behind it is refused, with the dialog's buttons named. If an action fails because
+     something covers the target (`OBSCURED`, for pop-ups built without dialog markup), the prompt says the last action
+     was blocked and by what, and a fresh picture goes to the vision model, which is asked to name the pop-up and its
+     buttons. (On IRCTC the model clicked the language dialog's title and typed into the form behind it.)
+   - **Typing into a spreadsheet's Name Box is refused.** Google Sheets draws its cells on a canvas, so the outline has
+     no cell A1, only the Name Box (the box at the top left that shows "A1"). A run typed "hello" there. Now the model
+     is told that the Name Box holds a cell address, and to type without a ref, which types into the selected cell.
    - Any problem goes back to qwen3:14b as a note, and it tries again, at most twice. After that, ask the user.
+   - **Clicking through the grid, for what has no ref.** The outline gives most elements a ref, and a ref click is exact
+     and instant, so it stays the normal way. Some things have no ref: a spreadsheet cell (Google Sheets draws its
+     grid on a canvas), an icon, part of a picture, a pop-up built without markup. For those, qwen3:14b answers with
+     `"visual"`: a description such as "cell A1" or "the English button in the language pop-up". Then:
+     1. The server takes a screenshot **without** the red labels (masked as always) and draws a blue chessboard grid
+        over it (columns A–P, rows 1–9). The vision model says what it sees and which cell holds the thing ("D7").
+     2. That cell and its neighbours are cut out, enlarged, and divided into 36 numbered squares. The vision model
+        names the square.
+     3. The centre of that square becomes a point. The vision model checks it on the screenshot with a pink marker
+        ("is the marker on cell A1?"); its no stops the click and goes back to qwen3:14b.
+     4. The browser layer turns the point into the element under it (the canvas, or the button around an icon) and
+        runs **the same checks and confirmations as for a ref**: a "Submit order" button found on the grid still asks
+        you first. The point is pressed exactly where it was found, which is what a canvas needs. A point is only valid
+        on the page as the screenshot showed it: if the page scrolled, resized or loaded since, the layer refuses it
+        (`STALE_POINT`). The receipt names the element and the point (`[a17] canvas "Grid" at (212, 340)`).
+     This costs three vision calls, about 30–60 seconds, so it is a fallback, not the normal path. Points are allowed
+     only for vision models (the `vision` capability), and the model never gives coordinates itself.
    - **Clicks that keep failing on one element** (for example a button something covers) go up a ladder with an end.
      After one failure, a fresh labelled screenshot goes to the vision model, which names the label on the visible
-     element, and the click goes there. After two, the keyboard: focus the element and press Enter. After three, or six
-     failed actions on one page, the step is handed to you ("please click it, then press Done") and the retries stop.
-     Clicking by screen position is not possible in this Nanobrowser, so the ladder always works through refs.
+     element, and the click goes there. After two, **the grid** (above) finds the element and the click goes to that
+     point. After three, the keyboard: focus the element and press Enter. After four, or six failed actions on one
+     page, the step is handed to you ("please click it, then press Done") and the retries stop. When you press Done,
+     the count starts again: before, it kept asking you to take over after you had fixed the page. Without the vision
+     model, the ladder skips its vision and grid steps.
    - **"Done: success" is refused** while a value from your request (such as [[PHONE_1]]) has not been typed.
+   - **"Done: success" needs a look at the page after the last action.** If anything was clicked, typed or opened
+     after the latest outline, the server takes a new `snapshot` (and then a screenshot) instead, and the model decides
+     again from what the page shows now.
+   - **With vision on, the vision model checks the claim** on a final screenshot taken **without the red labels**
+     (they cover the page's own content). It must first name its **evidence**: where on the page it sees each part
+     of the request (for a spreadsheet, the cell), and only then say yes or no. It is told the Name Box is not a cell.
+     (Before, it answered yes first and explained after, and said "cell A1 clearly shows hello" when A1 was empty and
+     hello was in the Name Box.) The evidence is added to the summary you see ("Checked on the final screenshot:
+     …"). Its no goes back to qwen3:14b as a note; if the model still says done after the retries, you are asked to
+     look. If the vision model cannot answer (link down, no answer in time, an answer that isn't JSON), the outcome
+     becomes **partial**, and the summary says the final page was not checked and why.
    - The command is then converted into the tool call Nanobrowser expects (for example `set`, with the target ref
      and the value).
 6. **Back in the browser, the real value goes in.** Just before the layer runs the tool, the extension swaps each

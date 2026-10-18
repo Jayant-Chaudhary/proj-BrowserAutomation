@@ -32,12 +32,18 @@ class Settings:
     vlm_ca_file: str = os.environ.get("VLM_CA_FILE", "")
     # ws:// without TLS, for a test on one machine only.
     vlm_allow_insecure: bool = _bool("VLM_ALLOW_INSECURE")
-    vlm_timeout_s: float = float(os.environ.get("VLM_TIMEOUT_S", "10"))
+    # Measured on Laptop B (2026-10-18): a description takes 4-37 s, a verify about 9 s. At 10 s most answers were lost.
+    vlm_timeout_s: float = float(os.environ.get("VLM_TIMEOUT_S", "60"))
 
-    # When the VLM describes a screenshot: "auto" only when the page outline is thin (few refs: canvas, images, an
-    # unreadable page), "always", or "never". Each description costs 10-40 s on Laptop B; verify is not affected.
+    # When the VLM looks at the page. "auto": every new page's screenshot, and a fresh screenshot after any action the
+    # outline cannot confirm (pipeline/step.py). "thin": only when the outline is thin (few refs: canvas, images, an
+    # unreadable page), the old rule. "never". Each look costs 10-40 s on Laptop B; the click, ladder and done checks
+    # are not affected.
     perceive: str = os.environ.get("PERCEIVE", "auto")
     perceive_min_refs: int = int(os.environ.get("PERCEIVE_MIN_REFS", "8"))
+
+    # How long the layer's `wait {settled}` may take before an observation after an action (the layer's maximum is 60).
+    settle_timeout_s: float = float(os.environ.get("SETTLE_TIMEOUT_S", "15"))
 
     # Retries after the first attempt, before the step becomes ask_user.
     max_retries: int = int(os.environ.get("MAX_RETRIES", "2"))

@@ -113,6 +113,11 @@ export interface TabState {
   /** Increases with every dispatched action; a capture taken before it is not reused. */
   actionSeq: number;
   last?: { observation: Observation; actionSeq: number; at: number; loaders: Array<[string, string]> };
+  /**
+   * The latest screenshot of the visible page: a point target is in its CSS pixels, so it is valid only while the
+   * page has the same document, scroll position and size.
+   */
+  shot?: { loaderId: string; scrollX: number; scrollY: number; width: number; height: number };
   /** The user cancelled the debugger bar; nothing reattaches until the user shares the tab again. */
   detachedByUser: boolean;
   pending: PendingModal[];
