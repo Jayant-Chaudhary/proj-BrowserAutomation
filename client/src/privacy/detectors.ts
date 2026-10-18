@@ -45,10 +45,15 @@ const LABEL_KINDS: Array<[RegExp, TagKind]> = [
 // A name the user states in plain text: "my name is Jane Doe", "name: Jane Doe". Capitalised words only, at most four.
 const STATED_NAME = /\b(?:[Mm]y name is|I am|I'm|[Nn]ame\s*[:=-])\s*([A-Z][\p{L}'-]+(?:\s+[A-Z][\p{L}'-]+){0,3})/gu;
 
-// A field line of the layer's outline: `[e12] textbox «Full name» (focused) = «Jane Doe»`.
-const FIELD_LINE = /\b(?:textbox|searchbox|combobox|spinbutton)\s+«([^«»\n]*)»[^\n«]*?=\s+«([^«»\n]+)»/g;
+// A field line of the layer's outline. The snapshot writes names and values as JSON-style strings
+// (`[e12] textbox "Full name" (focused) = "Jane Doe"`, perception/outline.ts); the layer's other messages use «…».
+const QUOTED = String.raw`(?:«([^«»\n]*)»|"((?:[^"\\\n]|\\.)*)")`;
+const FIELD_LINE = new RegExp(
+  String.raw`\b(?:textbox|searchbox|combobox|spinbutton)\s+${QUOTED}[^\n=]*?=\s+${QUOTED}`,
+  'g',
+);
 
-function labelKind(label: string, rules: readonly LearnedRule[]): TagKind | null {
+export function labelKind(label: string, rules: readonly LearnedRule[]): TagKind | null {
   const lower = label.toLowerCase();
   for (const rule of rules) if (rule.label && lower.includes(rule.label.toLowerCase())) return rule.kind;
   for (const [pattern, kind] of LABEL_KINDS) if (pattern.test(label)) return kind;
@@ -80,11 +85,14 @@ export function detect(text: string, rules: readonly LearnedRule[] = []): Hit[] 
   }
 
   for (const m of text.matchAll(FIELD_LINE)) {
-    const kind = labelKind(m[1], rules);
-    if (!kind) continue;
-    const value = m[2].replace(/…$/, '');
-    // The value's own position: after the label, inside the last «…» of the match.
-    const start = m.index + m[0].lastIndexOf(`«${m[2]}»`) + 1;
+    const label = m[1] ?? m[2] ?? '';
+    const raw = m[3] ?? m[4];
+    const kind = labelKind(label, rules);
+    if (!kind || raw === undefined) continue;
+    // The value as it is written in the text (escapes included), so the replacement covers exactly it.
+    const value = raw.replace(/…$/, '');
+    if (!value.trim()) continue;
+    const start = m.index + m[0].length - raw.length - 1;
     hits.push({ start, end: start + value.length, value, kind });
   }
 

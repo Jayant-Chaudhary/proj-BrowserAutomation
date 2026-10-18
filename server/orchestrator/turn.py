@@ -26,6 +26,10 @@ SCREENSHOT_LINE = re.compile(r"screenshot · tab \d+ · (\d+)×(\d+) px · scale
 # Results after which the page must be observed again before acting.
 STALE = re.compile(r"NODE_DETACHED|STALE_REF|UNKNOWN_REF|NOT_SHOWN|observe before|no longer valid|navigated", re.I)
 REFUSED_TAG = re.compile(r"error (UNKNOWN_TAG|MALFORMED_TAG)")
+# A failed action's result: the layer's error code, or a receipt saying nothing happened.
+ACTION_ERROR = re.compile(r"\berror ([A-Z_]{3,})")
+NO_EFFECT = re.compile(r"effect:\s*none", re.I)
+ACTIONS = ("click", "press", "set", "type", "fill_form", "hover")
 
 
 @dataclass
@@ -123,6 +127,56 @@ class Turn:
             if step.name not in ("snapshot", "screenshot", "find", "read", "wait"):
                 return step
         return None
+
+    def outline_line(self, ref: str) -> str:
+        """The line that shows a ref, newest first, preferring one with the element's «name»: a screenshot's label
+        list and some errors print the ref with its role only ("[a1] button"), which says too little to find it."""
+        pattern = re.compile(rf"\[{re.escape(ref)}\][^\n]*")
+        bare = ""
+        for step in reversed(self.steps):
+            for m in pattern.finditer(step.result):
+                if re.match(rf'\[{re.escape(ref)}\]\s+\S+\s+["«]', m.group(0)):
+                    return m.group(0)
+                bare = bare or m.group(0)
+        return bare
+
+    def element_label(self, ref: str) -> str:
+        """What an element is called on the page ('button «Add question»'), the same across refs for the same thing."""
+        # Snapshot lines quote names JSON-style (`[a1] button "Add question"`); other layer text uses «…».
+        m = re.match(r'\[[^\]]+\]\s+(\S+)(?:\s+(?:«([^»]*)»|"((?:[^"\\]|\\.)*)"))?', self.outline_line(ref))
+        if not m:
+            return ref
+        name = m.group(2) if m.group(2) is not None else m.group(3)
+        return f'{m.group(1)} "{name}"' if name else m.group(1)
+
+    def steps_on_page(self) -> list[Step]:
+        """The steps since the latest navigate: the actions on the page that is open now."""
+        for i in range(len(self.steps) - 1, -1, -1):
+            if self.steps[i].name == "navigate":
+                return self.steps[i + 1 :]
+        return self.steps
+
+    @staticmethod
+    def failed(step: Step) -> bool:
+        return step.name in ACTIONS and bool(ACTION_ERROR.search(step.result) or NO_EFFECT.search(step.result))
+
+    def failures_on(self, label: str) -> list[Step]:
+        """Failed actions on the open page whose target is the element called `label`."""
+        out = []
+        for step in self.steps_on_page():
+            if not self.failed(step):
+                continue
+            try:
+                target = (json.loads(step.args or "{}").get("target") or {})
+            except (json.JSONDecodeError, AttributeError):
+                continue
+            ref = target.get("ref") if isinstance(target, dict) else None
+            if ref and self.element_label(ref).lower() == label.lower():
+                out.append(step)
+        return out
+
+    def failures_on_page(self) -> int:
+        return sum(1 for step in self.steps_on_page() if self.failed(step))
 
     def refused_tag(self) -> str | None:
         """The placeholder the extension refused in the last call, if it refused one."""

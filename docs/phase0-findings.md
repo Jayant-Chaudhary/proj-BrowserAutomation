@@ -115,3 +115,22 @@ when the outline is thin.
 prompt. A client-side vector DB would not help here; it could later serve "recipe memory" (how a site was done
 before). The real limit is that qwen3:14b doesn't fit in 8 GB of VRAM. The option is qwen3:8b on Laptop A: it fits
 whole and is several times faster, but it needs its own validity test.
+
+## Click loops, the real outline format, and an end to retries (2026-10-18)
+
+- **Loop:** on a new Google Form the model clicked "Add question" (refused, OBSCURED) and the element covering it in
+  turn, 9 times. **Fix:** the per-element ladder in `server/orchestrator/pipeline/recover.py` (vision locate, then the
+  keyboard, then hand-over). Fixture `p-covered.html`: PASS with the real models in 6 turns (refused click → locate
+  → Enter → done).
+- **Clicking by position does not exist in this Nanobrowser** (`{x, y}` → CAPABILITY_DISABLED). The earlier plan's
+  "point + marker verify" path can never run; point commands are now refused at the server.
+- **The snapshot quotes JSON-style:** `[e3] textbox "Email" = "x"` (perception/outline.ts), not «…». The first privacy
+  detector for labelled fields and the server's element names assumed «…»; the unit tests used an invented format, so
+  they passed. Both now read the real format. **Privacy impact:** before the fix, a name in a field labelled "Full
+  name" was hidden only if the vault or a rule already knew it. Screenshots now also hide any value in a field labelled
+  as personal.
+- **False success:** a run answered `done: success` without typing anything, because the VLM called the empty fields
+  "filled". `done` with success is now refused while a task placeholder is untyped. The perceive prompt says only solid
+  grey boxes hide data.
+- After the fixes: `privacy-contact` PASS (9 turns, 118 s) and `privacy-covered` PASS (6 turns, 97 s), both with Gemma
+  4 on Laptop B and 0 real values at the server.

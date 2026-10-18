@@ -29,7 +29,8 @@ def verify_prompt(cmd: Command, element: str, task: str) -> str:
     return (
         f"The user's task: {task}\n"
         f"The agent wants to click {target}. Its reason: {cmd.reason}\n"
-        "Solid black or grey boxes hide personal data on purpose: a covered field is filled, not empty.\n"
+        "A field filled with a solid grey box hides personal data on purpose: it is filled. A white field with only a "
+        "thin border is empty.\n"
         "Is this click correct now? Say no if the target is wrong, if a dialog covers it, or if the form shows errors "
         'or required fields that are still empty. Answer as JSON: {"ok": true|false, "reason": "..."}'
     )

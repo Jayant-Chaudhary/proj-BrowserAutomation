@@ -30,8 +30,10 @@ def to_tool_call(cmd: Command) -> tuple[str, dict]:
         return "type", {"text": cmd.value or "", **intent}
     if cmd.action == "scroll":
         return "scroll", {"by": {"pages": -1 if cmd.direction == "up" else 1}, **intent}
+    if cmd.action == "press":
+        return "press", {"keys": cmd.keys or "Enter", **({"target": target} if target else {}), **intent}
     if cmd.action == "ask_user":
-        return "ask_user", {"message": cmd.message or "", "kind": "input"}
+        return "ask_user", {"message": cmd.message or "", "kind": cmd.ask_kind}
     return "done", {"outcome": cmd.outcome or "partial", "summary": cmd.summary or cmd.reason}
 
 

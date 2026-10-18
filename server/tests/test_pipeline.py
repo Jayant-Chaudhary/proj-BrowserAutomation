@@ -236,3 +236,111 @@ def test_refs_with_longer_epoch_prefixes():
     assert turn.known_refs == {"bl88", "bl90", "ABCDEFGHIJKL7"}
     c = check({"action": "click", "ref": "bl90", "reason": "r"}, turn)
     assert c.command is not None and "Blank form" in c.element
+
+
+# The Google Forms loop of 2026-10-18: "Add question" (bo46) refused as covered, again and again.
+FORM = (
+    "snapshot · tab 3\n[bo23] generic «Question toolbar»\n[bo46] button «Add question»\n"
+    "[bo52] button «Add question»\n[bo60] textbox «Untitled question»"
+)
+COVERED = "error OBSCURED (nothing dispatched)\nbutton «Add question» is covered by generic «Question toolbar» at its click point."
+SHOT = "screenshot · tab 3 · 1280×800 px · scale 1.00 · 12 labels"
+
+
+def form_body(steps):
+    # As in a real run: the server asks for one screenshot right after each new outline.
+    steps = [x for st in steps for x in ([st, ("screenshot", {}, SHOT)] if st[0] == "snapshot" else [st])]
+    tools = TOOLS + [{"type": "function", "function": {"name": n, "parameters": {}}} for n in ("screenshot", "press")]
+    body = agent_body(steps, task="make a blank google form with a short answer field called name")
+    body["tools"] = tools
+    body["messages"].append({"role": "user", "content": [{"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw0KGgo="}}]})
+    return body
+
+
+class FakeLink:
+    connected = True
+    model = "fake-vl"
+
+    def __init__(self, text):
+        self.text, self.jobs = text, []
+
+    async def run(self, kind, prompt, image, system=None):
+        from vlm_worker.protocol import JobResult
+
+        self.jobs.append((kind, prompt))
+        return JobResult(id="1", ok=True, result={"text": self.text} if kind == "chat" else {"ok": True, "reason": "ok"})
+
+
+def run(body, answers, link):
+    import asyncio as aio
+    from orchestrator.config import Settings
+    from orchestrator.pipeline.step import run_step
+
+    return aio.run(run_step(parse(body), FakeText(answers), link, Settings()))
+
+
+CLICK_ADD = {"action": "click", "ref": "bo46", "reason": "add a question"}
+click_step = ("click", {"target": {"ref": "bo46"}}, COVERED)
+
+
+def test_ladder_one_failure_screenshot_then_vision_locates_the_visible_copy():
+    link = FakeLink('{"found": true, "label": "bo52", "covered": false, "reason": "the visible plus button"}')
+    # After one failure, without a fresh screenshot: take one first.
+    r = run(form_body([("snapshot", {}, FORM), click_step]), [CLICK_ADD], link)
+    assert r.own_call[0] == "screenshot" and "locate" in r.notes[-1]
+    # With the fresh labelled screenshot: the VLM names bo52 and the click goes there.
+    r = run(form_body([("snapshot", {}, FORM), click_step, ("screenshot", {}, SHOT)]), [CLICK_ADD], link)
+    assert r.command.action == "click" and r.command.ref == "bo52"
+    assert link.jobs[-1][0] == "chat" and "Add question" in link.jobs[-1][1]
+
+
+def test_ladder_vision_sees_nothing_better_then_keyboard():
+    link = FakeLink('{"found": true, "label": "bo46", "covered": true, "reason": "covered by the toolbar"}')
+    r = run(form_body([("snapshot", {}, FORM), click_step, ("screenshot", {}, SHOT)]), [CLICK_ADD], link)
+    assert r.command.action == "press" and r.command.ref == "bo46"
+    name, args = formatter.to_tool_call(r.command)
+    assert name == "press" and args["keys"] == "Enter" and args["target"] == {"ref": "bo46"}
+
+
+def test_ladder_second_failure_keyboard_third_hands_over():
+    link = FakeLink("{}")
+    two = [("snapshot", {}, FORM), click_step, ("click", {"target": {"ref": "bo52"}}, COVERED)]
+    r = run(form_body(two), [CLICK_ADD], link)
+    assert r.command.action == "press"
+    three = two + [("press", {"keys": "Enter", "target": {"ref": "bo46"}}, "error NOT_INTERACTABLE (nothing dispatched)")]
+    r = run(form_body(three), [CLICK_ADD], link)
+    assert r.command.action == "ask_user" and r.command.ask_kind == "takeover"
+    assert "Add question" in r.command.message and "3 tries" in r.command.message
+    assert formatter.to_tool_call(r.command)[1]["kind"] == "takeover"
+
+
+def test_ladder_page_budget_and_other_elements_untouched():
+    link = FakeLink("{}")
+    many = [("snapshot", {}, FORM)] + [("click", {"target": {"ref": "bo23"}}, "error TARGET_CHANGED (nothing dispatched)")] * 6
+    r = run(form_body(many), [{"action": "click", "ref": "bo60", "reason": "r"}], link)
+    assert r.command.ask_kind == "takeover"
+    # No failures on the element: the model's click goes ahead unchanged.
+    r = run(form_body([("snapshot", {}, FORM)]), [{"action": "click", "ref": "bo60", "reason": "r"}], link)
+    assert r.command.action == "click" and r.command.ref == "bo60" and not r.notes
+
+
+def test_point_clicks_are_refused():
+    turn = parse(form_body([("snapshot", {}, FORM)]))
+    assert "not available" in check({"action": "click", "point": {"x": 5, "y": 5}, "reason": "r"}, turn).problems[0]
+
+
+def test_element_label_prefers_the_line_with_a_name():
+    for named in ('[a1] button "Add question"', "[a1] button «Add question»"):
+        turn = parse(agent_body([("snapshot", {}, named), ("screenshot", {}, SHOT + "\n[a1] button")]))
+        assert turn.element_label("a1") == 'button "Add question"'
+    # As the real run printed it, with the label list after the outline.
+    turn = parse(agent_body([("snapshot", {}, '[a1] button "Add question"\n[a2] textbox "Name" = "[[NAME_1]]"')]))
+    assert check({"action": "type", "ref": "a2", "value": '"[[NAME_1]]"', "reason": "r"}, turn).command.value == "[[NAME_1]]"
+
+
+def test_done_success_needs_every_task_value_typed():
+    # A real run answered done "filled and ready" right after the screenshot, without typing anything.
+    turn = parse(agent_body([("snapshot", {}, OUTLINE)]))
+    early = check({"action": "done", "outcome": "success", "summary": "filled", "reason": "r"}, turn)
+    assert early.command is None and "[[NAME_1]]" in early.problems[0]
+    assert check({"action": "done", "outcome": "failed", "summary": "could not", "reason": "r"}, turn).command

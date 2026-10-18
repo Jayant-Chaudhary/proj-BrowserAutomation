@@ -99,6 +99,14 @@ export const PRIVACY_PERSON = { name: 'Jane Doe', email: 'jane.doe@example.com',
 
 export const TASKS: EvalTask[] = [
   {
+    // A button under an invisible layer (as on Google Forms): clicks are refused as covered, so the server's ladder
+    // (vision check, keyboard, hand-over) has to get it done or stop.
+    id: 'privacy-covered',
+    url: `${FIXTURE_ORIGIN}/p-covered.html`,
+    task: 'Click the Add question button once.',
+    grade: f => /Question added \(1\)/.test(f.pageText),
+  },
+  {
     id: 'privacy-contact',
     url: `${FIXTURE_ORIGIN}/p-contact.html`,
     task: `Fill in the contact form with my details (my name is ${PRIVACY_PERSON.name}, email ${PRIVACY_PERSON.email}, phone ${PRIVACY_PERSON.phone}) and the message "Please call me back", then send it.`,

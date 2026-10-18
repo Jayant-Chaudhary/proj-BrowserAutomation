@@ -12,7 +12,9 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-Action = Literal["navigate", "click", "type", "scroll", "ask_user", "done"]
+Action = Literal["navigate", "click", "type", "scroll", "ask_user", "done", "press"]
+# `press` is never offered to the model (see ollama_schema): the server uses it as the keyboard fallback for a button the
+# layer refuses to click because something covers it.
 
 
 class Point(BaseModel):
@@ -28,6 +30,9 @@ class Command(BaseModel):
     value: str | None = Field(default=None, description="text to type; copy placeholders like [[NAME_1]] exactly")
     direction: Literal["up", "down"] | None = None
     message: str | None = Field(default=None, description="ask_user: the question for the user")
+    # ask_user: "input" asks a question; "takeover" hands the step to the user (the server's out-of-tries step).
+    ask_kind: Literal["input", "takeover"] = "input"
+    keys: str | None = None
     outcome: Literal["success", "partial", "failed"] | None = None
     summary: str | None = Field(default=None, description="done: the answer for the user")
     reason: str = Field(description="one short sentence: why this action")

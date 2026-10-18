@@ -9,3 +9,5 @@
 **Used by.** text_model.py, pipeline/check.py, formatter.py, main.py
 
 **Changed after the first use from Chrome.** New action `navigate` with `url` (the first version could not open a site: "open youtube.com" failed).
+
+**Changed (2026-10-18, real runs).** `press` (server-only, never offered to the model) and `ask_kind` (input or takeover).

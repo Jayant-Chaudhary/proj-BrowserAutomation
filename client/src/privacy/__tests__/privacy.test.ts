@@ -22,6 +22,15 @@ describe('detectors', () => {
     expect(detect('active tab: [1400559681] «New Tab» [e12] button «Next» 4111111111111112')).toEqual([]);
   });
 
+  it('reads the real snapshot format (JSON-style quotes, from perception/outline.ts)', () => {
+    const outline =
+      '[bo60] textbox "Full name" (focused) = "Jane Doe"\n[bo61] textbox "Coupon" = "SAVE10"\n[bo62] button "Add question"';
+    expect(detect(outline)).toEqual([expect.objectContaining({ value: 'Jane Doe', kind: 'NAME' })]);
+    const vault = new Vault();
+    expect(redactText(outline, vault)).toContain('textbox "Full name" (focused) = "[[NAME_1]]"');
+    expect(detect('[a1] textbox "Your \\"nick\\" name" = "Ada"').map(h => h.value)).toEqual(['Ada']);
+  });
+
   it('tags the value of a field whose label names personal data', () => {
     const hits = detect('[e3] textbox «Full name» (focused) = «Jane Doe»\n[e4] textbox «Coupon» = «SAVE10»');
     expect(hits).toEqual([expect.objectContaining({ value: 'Jane Doe', kind: 'NAME' })]);
@@ -170,5 +179,9 @@ describe('privacyFetch', () => {
     expect(ctx.hideInImage('Signed in as Jane Doe', undefined)).toBe(true);
     expect(ctx.hideInImage('Email', 'jane@x.org')).toBe(true);
     expect(ctx.hideInImage('Submit', undefined)).toBe(false);
+    // A pre-filled personal field is hidden even when the vault does not know its value.
+    expect(ctx.hideInImage('Full name', 'Pat Unknown')).toBe(true);
+    expect(ctx.hideInImage('Full name', '')).toBe(false);
+    expect(ctx.hideInImage('Message', 'Please call me back')).toBe(false);
   });
 });

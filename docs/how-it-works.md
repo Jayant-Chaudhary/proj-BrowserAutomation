@@ -35,7 +35,7 @@ know that the "model" is a pipeline.
    - Values already in the vault are replaced by their placeholder first, including their URL-encoded and
      form-encoded forms (`jane.doe%40example.com`, `Jane+Doe`), because pages often echo submitted data like that. This catches a value we typed earlier
      when it shows up again on the page.
-   - Then the detectors run (also on a decoded copy of the text): a name you state ("my name is …"), email, phone, card, ID numbers, the value of any field whose label says "name",
+   - Then the detectors run (also on a decoded copy of the text): a name you state ("my name is …"), email, phone, card, ID numbers, the value of any field whose label says "name" (in the outline's real `textbox "Full name" = "…"` form),
      "address", "date of birth" and so on, and your own "hide this" rules. Each new value gets a new placeholder.
    - Any image that was not masked by the layer is replaced by the text "screenshot withheld".
    - Redaction repeats until no new placeholder appears, so a value found late is also replaced earlier in the request.
@@ -68,7 +68,15 @@ know that the "model" is a pipeline.
    - Before a risky click, take a fresh screenshot and ask the vision model to **verify** the click. For a click by
      position, its "no" blocks the click. For a click on a ref, its "no" is only recorded, because the 7B vision model
      wrongly said "not visible" in every test. The ref check and Nanobrowser's own confirmation still apply.
+   - The vision model describes a screenshot only when the outline is thin (fewer than 8 elements). A field covered by
+     a grey box has a value; an empty white field is empty.
    - Any problem goes back to qwen3:14b as a note, and it tries again, at most twice. After that, ask the user.
+   - **Clicks that keep failing on one element** (for example a button something covers) go up a ladder with an end.
+     After one failure, a fresh labelled screenshot goes to the vision model, which names the label on the visible
+     element, and the click goes there. After two, the keyboard: focus the element and press Enter. After three, or six
+     failed actions on one page, the step is handed to you ("please click it, then press Done") and the retries stop.
+     Clicking by screen position is not possible in this Nanobrowser, so the ladder always works through refs.
+   - **"Done: success" is refused** while a value from your request (such as [[PHONE_1]]) has not been typed.
    - The command is then converted into the tool call Nanobrowser expects (for example `set`, with the target ref
      and the value).
 6. **Back in the browser, the real value goes in.** Just before the layer runs the tool, the extension swaps each

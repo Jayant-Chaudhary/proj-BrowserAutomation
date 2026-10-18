@@ -11,3 +11,5 @@
 **Notes and limits.** Plain names in running text are not detected unless they are in the vault or a rule.
 
 **Changed after the E2E runs.** New: a name the user states in plain text ("my name is Jane Doe", "Name: …").
+
+**Changed (2026-10-18, real runs).** Reads the snapshot's real field format, `textbox "Full name" = "Jane Doe"` (perception/outline.ts quotes JSON-style). The first version only matched «…», which the layer uses elsewhere, so a name in a labelled field was caught only when the vault or a rule already knew it. `labelKind` is exported for the screenshot rule.

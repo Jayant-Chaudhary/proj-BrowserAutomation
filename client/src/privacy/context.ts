@@ -1,7 +1,7 @@
 // One privacy context for the whole service worker: the vault, the image registry, the user's learned rules and a
 // short log of what was sent. The extension builds it once (src/extension/privacy.ts) and hands it to the network
 // wrapper, the tool-call swap-back and the layer's screenshot masking, so all three agree on the same values.
-import { detect } from './detectors';
+import { detect, labelKind } from './detectors';
 import type { LearnedRule } from './detectors';
 import { imageRegistry } from './image-registry';
 import type { ImageRegistry } from './image-registry';
@@ -47,6 +47,9 @@ export function createPrivacyContext(options: {
       if (records.length > MAX_RECORDS) records.shift();
     },
     recent: () => records,
-    hideInImage: (name, value) => holdsPersonal(name) || holdsPersonal(value ?? ''),
+    // A field labelled as personal ("Full name", "Email") hides any value it holds, known to the vault or not: a
+    // page can pre-fill the user's own name, which no pattern would find.
+    hideInImage: (name, value) =>
+      holdsPersonal(name) || holdsPersonal(value ?? '') || (!!value?.trim() && labelKind(name, rules()) !== null),
   };
 }

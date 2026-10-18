@@ -34,12 +34,7 @@ class Checked:
 
 def element_line(turn: Turn, ref: str) -> str:
     """The outline line that shows a ref, from the newest result that has it."""
-    pattern = re.compile(rf"\[{re.escape(ref)}\][^\n]*")
-    for step in reversed(turn.steps):
-        m = pattern.search(step.result)
-        if m:
-            return m.group(0)
-    return ""
+    return turn.outline_line(ref)
 
 
 def check(raw: dict, turn: Turn) -> Checked:
@@ -55,13 +50,16 @@ def check(raw: dict, turn: Turn) -> Checked:
             if cmd.ref not in turn.known_refs:
                 problems.append(f'The ref "{cmd.ref}" is not in the page outline. Use a ref that is shown.')
         elif cmd.point:
-            if not turn.image_b64:
-                problems.append("A point needs a screenshot, and there is none. Use a ref from the outline.")
+            # The layer refuses {x, y} targets (CAPABILITY_DISABLED): it acts only on elements it showed the agent.
+            problems.append("Clicking by position is not available. Use a ref from the outline.")
         elif cmd.action == "click":
             problems.append("click needs a ref from the outline.")
     if cmd.action == "type" and cmd.value:
         # The outline quotes page text as «…»; a model that copies the quotes would type them into the field.
         cmd.value = cmd.value.replace("«", "").replace("»", "")
+        # The same for the outline's JSON-style quotes around a whole value: "[[EMAIL_1]]" with its quotes.
+        if len(cmd.value) >= 2 and cmd.value[0] == cmd.value[-1] == '"':
+            cmd.value = cmd.value[1:-1]
     if cmd.action == "type":
         if not cmd.value:
             problems.append("type needs a value.")
@@ -96,6 +94,14 @@ def check(raw: dict, turn: Turn) -> Checked:
         problems.append("ask_user needs a message.")
     if cmd.action == "done" and (not cmd.outcome or not cmd.summary):
         problems.append("done needs an outcome and a summary.")
+    if cmd.action == "done" and cmd.outcome == "success":
+        # Success with a value from the task never typed is not success (a run said "filled" without typing anything).
+        missing = untyped_task_tags(turn)
+        if missing:
+            problems.append(
+                f"The task's {', '.join(missing)} {'has' if len(missing) == 1 else 'have'} not been typed yet, "
+                "so the task is not done. Fill the matching field."
+            )
     if cmd.action == "scroll" and not cmd.direction:
         cmd.direction = "down"
 

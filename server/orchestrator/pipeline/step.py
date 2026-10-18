@@ -7,6 +7,8 @@
   4. qwen3:14b decides -> check -> (VLM verify if risky, on a fresh screenshot) -> on a problem, the note goes back
      to qwen3:14b.
   5. Still failing after the retries                  -> ask_user.
+  Clicks that already failed on the same element go up the ladder in recover.py: vision check of the labelled
+  screenshot, then the keyboard, then hand the step to the user. There is always an end.
 """
 
 from __future__ import annotations
@@ -21,11 +23,12 @@ from ..text_model import TextModel, TextModelError
 from ..turn import REF, Turn
 from ..vlm_link import VlmLink
 from .check import check
+from .recover import recover
 from .verify import verify
 
 PERCEIVE_PROMPT = (
-    "Describe this web page screenshot for a browser agent. Solid black or grey boxes hide personal data on purpose: "
-    "a box over a field means the field HAS a value. Never call a field empty because it is covered. "
+    "Describe this web page screenshot for a browser agent. A field filled with a SOLID GREY box hides personal data "
+    "on purpose: that field has a value. A white field with only a thin border is empty; say so. "
     "Red labels such as a5 name elements. "
     'Answer as JSON: {"page_kind": "...", "modal": null or "...", "errors": ["..."], '
     '"visible_fields": ["..."], "notes": "..."}'
@@ -104,6 +107,18 @@ async def run_step(turn: Turn, text: TextModel, link: VlmLink, settings: Setting
         if checked.command is None:
             out.notes.extend(checked.problems)
             continue
+        # Clicks that already failed on this element go up the escalation ladder (pipeline/recover.py).
+        rec = await recover(checked.command, turn, link, SCREENSHOT_CALL)
+        if rec is not None:
+            out.notes.append(rec.note)
+            if rec.own_call:
+                out.own_call = rec.own_call
+                return out
+            if rec.command.action != "click":
+                out.command = rec.command
+                return out
+            checked.command = rec.command
+            checked.element = turn.outline_line(rec.command.ref or "")
         if checked.risk == "high" and turn.can_screenshot and link.connected and turn.screenshot_is_stale():
             # Verify must look at the page as it is now: take a fresh screenshot first; the next request decides again.
             out.own_call = SCREENSHOT_CALL

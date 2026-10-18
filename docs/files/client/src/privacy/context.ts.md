@@ -7,3 +7,5 @@
 **Depends on.** detectors.ts, image-registry.ts, vault.ts, net-wrapper.ts (type)
 
 **Used by.** extension/privacy.ts, net-wrapper.ts (type)
+
+**Changed (2026-10-18, real runs).** `hideInImage`: a field labelled as personal (name, email, phone…) that holds any value is painted over, even when the vault does not know the value (a page can pre-fill the user's own name).

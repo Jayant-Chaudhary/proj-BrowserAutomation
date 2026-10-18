@@ -54,3 +54,5 @@ One page per file we wrote or changed. Fork files say what we changed. Keep each
 - [`server/setup/setup_laptop_a.sh`](server/setup/setup_laptop_a.sh.md)
 - [`server/run_orchestrator.sh`](server/run_orchestrator.sh.md)
 - [`.gitattributes`](.gitattributes.md)
+- [`server/orchestrator/pipeline/recover.py`](server/orchestrator/pipeline/recover.py.md)
+- [`client/fixtures/pages/p-covered.html`](client/fixtures/pages/p-covered.html.md)
