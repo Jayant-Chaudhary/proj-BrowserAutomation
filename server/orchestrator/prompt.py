@@ -1,4 +1,4 @@
-"""Builds the compact prompt for qwen3:14b from a Turn: the task, the screen description from the VLM, the trimmed page
+"""Builds the compact prompt for qwen3:8b from a Turn: the task, the screen description from the VLM, the trimmed page
 outline, the last few results and any failure notes from earlier attempts at this step. Nanobrowser's own system prompt
 and tool schemas are never forwarded; the command schema goes to Ollama as `format` instead.
 """
@@ -22,7 +22,9 @@ def _trim(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[:limit] + f"\n… ({len(text) - limit} more characters cut)"
 
 
-def decide_messages(turn: Turn, perception: dict | None, notes: list[str], snapshot_chars: int) -> list[dict]:
+def decide_messages(
+    turn: Turn, perception: dict | None, notes: list[str], snapshot_chars: int, hints: str = ""
+) -> list[dict]:
     parts = []
     if turn.earlier_requests:
         parts.append(
@@ -83,6 +85,11 @@ def decide_messages(turn: Turn, perception: dict | None, notes: list[str], snaps
     if recent:
         lines = [f"- {s.name} {s.args}\n  → {_trim(s.result, RESULT_CHARS)}" for s in recent]
         parts.append("ACTIONS SINCE THE OUTLINE, OLDEST FIRST:\n" + "\n".join(lines))
+    if hints:
+        parts.append(
+            "BEFORE ON THIS SITE (it worked then; the page may have changed, so use refs from the outline above, not "
+            "these names blindly):\n" + hints
+        )
     if notes:
         parts.append(
             "YOUR EARLIER ANSWERS FOR THIS STEP WERE REJECTED:\n"

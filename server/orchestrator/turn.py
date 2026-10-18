@@ -102,6 +102,8 @@ class Turn:
     snapshot: str = ""
     # Index in `steps` of the latest snapshot; -1 when there is none.
     snapshot_at: int = -1
+    # The first step of the current request: the steps before it belong to earlier requests of the chat.
+    request_start: int = 0
     # Index in `steps` of the latest screenshot; -1 when there is none.
     screenshot_at: int = -1
     # Whether the latest screenshot has the red ref labels drawn on it.
@@ -430,7 +432,10 @@ def parse(body: dict) -> Turn:
             images = _images(content)
             if images:
                 turn.image_b64 = images[-1]
-            turn.requests.extend(_request_parts(content))
+            parts = _request_parts(content)
+            if parts:
+                turn.request_start = len(turn.steps)
+            turn.requests.extend(parts)
             if first_user and plain:
                 turn.task = plain
                 first_user = False

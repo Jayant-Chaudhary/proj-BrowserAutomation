@@ -1,5 +1,5 @@
 """The server's first check of a command, before anything reaches the browser. Each problem becomes a short note that
-goes back to qwen3:14b for the retry. It also rates the risk of the action, which decides whether the VLM verifies it.
+goes back to qwen3:8b for the retry. It also rates the risk of the action, which decides whether the VLM verifies it.
 The extension checks again on its own side; this check only saves a round trip to the browser.
 """
 

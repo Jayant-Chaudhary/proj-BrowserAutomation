@@ -26,10 +26,10 @@ Copy `cert.pem` (never `key.pem`) and the token to Laptop A. Open port 8765 to t
 ## Laptop A: the orchestrator
 
 ```bash
-ollama pull qwen3:14b
+ollama pull qwen3:8b
 export VLM_URL=wss://192.168.1.20:8765 VLM_TOKEN=... VLM_CA_FILE=/path/to/cert.pem
 .venv/bin/uvicorn orchestrator.main:app --host 0.0.0.0 --port 8000
-curl localhost:8000/health        # {"ok":true,"text_model":"qwen3:14b","vlm":"qwen2.5vl:7b"}
+curl localhost:8000/health        # {"ok":true,"text_model":"qwen3:8b","vlm":"qwen2.5vl:7b"}
 curl localhost:8000/health/vlm    # the VLM reads a random number off a test image: "correct": true, and how long it took
 ```
 
@@ -53,7 +53,7 @@ when the link is up.
 
 ```bash
 .venv/bin/python -m pytest                      # unit tests + real wss/TLS link tests (needs openssl)
-.venv/bin/python -m tests.smoke_text_model 5    # real qwen3:14b: seconds per step and validity
+.venv/bin/python -m tests.smoke_text_model 5    # real qwen3:8b: seconds per step and validity
 ```
 
 Every request is logged to `logs/requests-<date>.jsonl` (without images).

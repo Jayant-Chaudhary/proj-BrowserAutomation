@@ -1,4 +1,4 @@
-"""The command qwen3:14b answers with: one small JSON object, never a native tool call.
+"""The command qwen3:8b answers with: one small JSON object, never a native tool call.
 
 The JSON schema below is handed to Ollama as `format`, so the model's output is constrained to it. formatter.py turns a
 checked command into the OpenAI tool call Nanobrowser expects. contracts/command.schema.json is generated from this

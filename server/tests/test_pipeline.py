@@ -278,6 +278,7 @@ def form_body(steps):
 class FakeLink:
     connected = enabled = True
     model = "fake-vl"
+    capabilities: set = set()
     last_error = ""
 
     def __init__(self, text, verdict=None, answers=True):
