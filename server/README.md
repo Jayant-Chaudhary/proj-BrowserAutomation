@@ -36,8 +36,23 @@ curl localhost:8000/health/vlm    # the VLM reads a random number off a test ima
 Without `VLM_URL`, the orchestrator runs text-only. To test on one machine without TLS, start the worker with
 `--insecure` and set `VLM_URL=ws://localhost:8765 VLM_ALLOW_INSECURE=1`.
 
-Settings (environment variables, see `orchestrator/config.py`): `OLLAMA_URL`, `TEXT_MODEL`, `TEXT_NUM_CTX`,
-`VLM_TIMEOUT_S`, `MAX_RETRIES`, `SNAPSHOT_CHARS`, `LOG_DIR`.
+Settings (environment variables, see `orchestrator/config.py`): `OLLAMA_URL`, `TEXT_MODEL` (default `qwen3:8b`),
+`TEXT_NUM_CTX`, `VLM_TIMEOUT_S`, `MAX_RETRIES`, `SNAPSHOT_CHARS`, `LOG_DIR`, and for site memory `SITE_MEMORY`
+(`replay` | `hints` | `off`), `MEMORY_DIR`, `MEMORY_MATCH`, `EMBED_MODEL` (default `nomic-embed-text`; without it,
+playbooks are ranked by word overlap).
+
+### Site memory
+
+A run that ends in a success the VLM confirmed is kept as a playbook for that site (`orchestrator/memory.py`,
+`memory/memory.sqlite3`): the task as a template and each step by element name, never your values. A later run of a
+task that fits the template repeats the steps while the page matches, without asking the text model; otherwise the
+steps go into the prompt as hints. `python -m orchestrator.memory list | show <host> | forget <host>`.
+
+### UI-TARS on Laptop B
+
+Start the worker with `VLM_MODEL=hf.co/mradermacher/UI-TARS-1.5-7B-GGUF:Q4_K_M` (now the default). At start-up it
+checks which coordinates the model answers in (`vlm_worker/grounding.py`) and then offers `locate` jobs: a click by
+description takes one call instead of the two-step grid. `VLM_COORDS` skips the check (`off` disables locate).
 
 ## Point Nanobrowser at it
 
